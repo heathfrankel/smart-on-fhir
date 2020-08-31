@@ -38,7 +38,7 @@ namespace EHRApp
                 HumanName name = patient.Name.First();
                 item.SubItems.Add($"{name.Given.First()} {name.Family}");
                 item.SubItems.Add(patient.BirthDate);
-                item.SubItems.Add(CalculateAge(patient.BirthDateElement.ToDateTime()));
+                item.SubItems.Add(CalculateAge(patient.BirthDateElement?.ToDateTime()));
                 patientListView.Items.Add(item);
             }
         }
@@ -72,12 +72,26 @@ namespace EHRApp
         private void FindPatient(object sender, EventArgs e)
         {
             Bundle patientBundle = FindPatientByName(findWhoTextBox.Text);
-            PopulateListView(patientBundle);
+            if (patientBundle != null)
+                PopulateListView(patientBundle);
         }
 
         private Bundle FindPatientByName(string name)
         {
-            return FhirClient.Search<Patient>(new string[] { $"name={name}" });
+            try
+            {
+                return FhirClient.Search<Patient>(new string[] { $"name={name}" });
+            }
+            catch(FhirOperationException ex)
+            {
+                MessageBox.Show(ex.Message);
+                return null;
+            }
+            catch (ArgumentException ex)
+            {
+                MessageBox.Show(ex.Message);
+                return null;
+            }
         }
 
         public string SelectedPatientId { get; private set; }

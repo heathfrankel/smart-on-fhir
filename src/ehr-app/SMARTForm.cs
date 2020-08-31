@@ -29,15 +29,38 @@ namespace EHRApp
             _browser.TitleChanged += OnBrowserTitleChanged;
             _browser.AddressChanged += OnBrowserAddressChanged;
             _browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
+            _browser.IsBrowserInitializedChanged += _browser_IsBrowserInitializedChanged;
+            _browser.LoadError += _browser_LoadError; 
 
             string bitness = Environment.Is64BitProcess ? "x64" : "x86";
             string version = $"Chromium: {Cef.ChromiumVersion}, CEF: {Cef.CefVersion}, Environment: {Cef.CefSharpVersion}";
             GetMdiParent().DisplayOutput(version);
         }
 
+        private void _browser_IsBrowserInitializedChanged(object sender, EventArgs e)
+        {
+            if (!string.IsNullOrEmpty(_url) && _browser.Address != _url)
+            {
+                _browser.Load(_url);
+            }
+        }
+
+        private void _browser_LoadError(object sender, LoadErrorEventArgs e)
+        {
+            System.Diagnostics.Trace.WriteLine($"{e.ErrorCode}: {e.ErrorText} Url: {e.FailedUrl}");
+            GetMdiParent().DisplayOutput($"{e.ErrorCode}: {e.ErrorText} Url: {e.FailedUrl}");
+        }
+
         private void OnBrowserLoadingStateChanged(object sender, LoadingStateChangedEventArgs e)
         {
             GetMdiParent().DisplayOutput(e.IsLoading ? "Loading" : "Ready");
+            if (_browser.Address == _url)
+                _url = null;
+            if (!string.IsNullOrEmpty(_url) && !e.IsLoading && _browser.Address != _url)
+            {
+                // _url = null;
+                _browser.Load(_url);
+            }
         }
 
         public MDIParent GetMdiParent()
@@ -45,9 +68,12 @@ namespace EHRApp
             return (MDIParent)MdiParent;
         }
 
+        string _url;
         public void LoadSmartApp(SmartApplication application, string fhirBaseUrl, string launchId)
         {
-            _browser.Load($"{application.Url}?iss={fhirBaseUrl}&launch={launchId}");
+            _url = $"{application.Url}?iss={fhirBaseUrl}&launch={launchId}";
+            if (_browser.IsBrowserInitialized)
+                _browser.Load(_url);
         }
         
         private void OnBrowserAddressChanged(object sender, AddressChangedEventArgs e)
@@ -71,7 +97,16 @@ namespace EHRApp
 
         private void OnBrowserConsoleMessage(object sender, ConsoleMessageEventArgs e)
         {
-            GetMdiParent().DisplayOutput($"Line: {e.Line}, Source: {e.Source}, Message: {e.Message}");
+            this.InvokeOnUiThreadIfRequired(() =>
+            {
+                System.Diagnostics.Trace.WriteLine($"Line: {e.Line}, Source: {e.Source}, Message: {e.Message}");
+                GetMdiParent().DisplayOutput($"Line: {e.Line}, Source: {e.Source}, Message: {e.Message}");
+            });
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            _browser.Load(_url);
         }
     }
 }
