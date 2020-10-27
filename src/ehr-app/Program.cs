@@ -2,6 +2,7 @@
 using System.IO;
 using System.Windows.Forms;
 using CefSharp;
+using CefSharp.WinForms;
 using Microsoft.Extensions.Configuration;
 
 namespace EHRApp
@@ -27,7 +28,7 @@ namespace EHRApp
             IConfigurationBuilder builder = new ConfigurationBuilder()
                 .SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
                 .AddJsonFile("AppSettings.json");
-            if(profile != null)
+            if (profile != null)
                 builder.AddJsonFile($"{profile}.json");
 
             IConfigurationRoot configurationRoot = builder.Build();
@@ -46,6 +47,7 @@ namespace EHRApp
             {
                 CachePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"CefSharp\Cachce")
             };
+            SimulatedFhirServer.RegisterHandler(settings);
             Cef.Initialize(settings, performDependencyCheck: true, browserProcessHandler: null);
         }
     }

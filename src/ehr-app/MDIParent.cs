@@ -114,13 +114,32 @@ namespace EHRApp
             }
             SMARTForm smartForm = new SMARTForm();
             smartForm.MdiParent = this;
-            smartForm.WindowState = FormWindowState.Maximized;
+            smartForm.WindowState = ActiveMdiChild.WindowState; // FormWindowState.Maximized;
 
             string applicationKey = ReflectionUtility.GetPropertyValue(sender, "Tag", string.Empty) as string;
             SmartApplication application = Globals.GetSmartApplicationSettings(applicationKey);
 
             smartForm.Show();
-            smartForm.LoadSmartApp(application, Globals.ApplicationSettings.FhirBaseUrl, "0a25036c-ed4c-4fad-a806-3dec4d58bc42");
+            smartForm.LoadSmartApp(application, Globals.ApplicationSettings.FhirBaseUrl, "0a25036c-ed4c-4fad-a806-3dec4d58bc42", patientData);
+        }
+
+        private void fastFormsQuestionnaireToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            IPatientData patientData = ActiveMdiChild as IPatientData;
+            if (patientData == null)
+            {
+                MessageBox.Show(this, "No patient has been selected, please select a patient", "No patient selected", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            SMARTForm smartForm = new SMARTForm();
+            smartForm.MdiParent = this;
+            smartForm.WindowState = ActiveMdiChild.WindowState; // FormWindowState.Maximized;
+
+            string applicationKey = ReflectionUtility.GetPropertyValue(sender, "Tag", string.Empty) as string;
+            SmartApplication application = Globals.GetSmartApplicationSettings(applicationKey);
+
+            smartForm.Show();
+            smartForm.LoadSmartApp(application, Globals.ApplicationSettings.FhirBaseUrl, "0b25036c-ed4c-4fad-a806-3dec4d58bc43", patientData);
         }
     }
 }

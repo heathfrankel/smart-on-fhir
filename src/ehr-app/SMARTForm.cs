@@ -22,7 +22,7 @@ namespace EHRApp
             {
                 Dock = DockStyle.Fill
             };
-            Controls.Add(_browser);
+            panel2.Controls.Add(_browser);
             
             _browser.ConsoleMessage += OnBrowserConsoleMessage;
             _browser.StatusMessage += OnBrowserStatusMessage;
@@ -53,6 +53,12 @@ namespace EHRApp
 
         private void OnBrowserLoadingStateChanged(object sender, LoadingStateChangedEventArgs e)
         {
+            textBoxAddress.InvokeOnUiThreadIfRequired(() => 
+            {
+                if (textBoxAddress.Text != _browser.Address)
+                    textBoxAddress.Text = _browser.Address;
+            });
+
             GetMdiParent().DisplayOutput(e.IsLoading ? "Loading" : "Ready");
             if (_browser.Address == _url)
                 _url = null;
@@ -106,7 +112,7 @@ namespace EHRApp
 
         private void button1_Click(object sender, EventArgs e)
         {
-            _browser.Load(_url);
+            _browser.Refresh();
         }
     }
 }
