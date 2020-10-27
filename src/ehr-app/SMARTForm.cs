@@ -8,10 +8,17 @@ namespace EHRApp
     public partial class SMARTForm : Form
     {
         private ChromiumWebBrowser _browser;
+        private string _launchId;
 
         public SMARTForm()
         {
             InitializeComponent();
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            SimulatedFhirServer.LaunchContexts.Remove(_launchId);
+            base.OnClosed(e);
         }
 
         protected override void OnLoad(EventArgs e)
@@ -57,6 +64,7 @@ namespace EHRApp
             {
                 if (textBoxAddress.Text != _browser.Address)
                     textBoxAddress.Text = _browser.Address;
+                progressBar1.Visible = e.IsLoading;
             });
 
             GetMdiParent().DisplayOutput(e.IsLoading ? "Loading" : "Ready");
@@ -75,8 +83,10 @@ namespace EHRApp
         }
 
         string _url;
-        public void LoadSmartApp(SmartApplication application, string fhirBaseUrl, string launchId)
+        internal void LoadSmartApp(SmartApplication application, string fhirBaseUrl, string launchId, IPatientData patientData)
         {
+            _launchId = launchId;
+            SimulatedFhirServer.LaunchContexts.Add(launchId, patientData);
             _url = $"{application.Url}?iss={fhirBaseUrl}&launch={launchId}";
             if (_browser.IsBrowserInitialized)
                 _browser.Load(_url);

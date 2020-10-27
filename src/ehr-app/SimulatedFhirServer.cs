@@ -12,6 +12,8 @@ namespace EHRApp
 {
     public static class SimulatedFhirServer
     {
+        internal static Dictionary<string, IPatientData> LaunchContexts { get; } = new Dictionary<string, IPatientData>();
+
         public static void RegisterHandler(CefSettings settings)
         {
             settings.RegisterScheme(new CefCustomScheme
