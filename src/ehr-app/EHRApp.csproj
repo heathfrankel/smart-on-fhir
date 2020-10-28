@@ -194,6 +194,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ReflectionUtility.cs" />
     <Compile Include="SmartApplication.cs" />
+    <Compile Include="SmartAppContext.cs" />
     <Compile Include="SmartAppSettings.cs" />
     <Compile Include="SMARTForm.cs">
       <SubType>Form</SubType>
@@ -244,6 +245,12 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hl7.Fhir.SmartAppLaunch.Support\Hl7.Fhir.R4.SmartAppLaunch.Support.csproj">
+      <Project>{5e0eb7c0-9294-45cf-86a2-a5ce7395aadf}</Project>
+      <Name>Hl7.Fhir.R4.SmartAppLaunch.Support</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">

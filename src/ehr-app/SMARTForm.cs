@@ -1,8 +1,8 @@
 ﻿using CefSharp;
 using CefSharp.WinForms;
+using Hl7.Fhir.SmartAppLaunch;
 using System;
 using System.IO;
-using System.Security.Cryptography.X509Certificates;
 using System.Windows.Forms;
 
 namespace EHRApp
@@ -11,6 +11,7 @@ namespace EHRApp
     {
         private ChromiumWebBrowser _browser;
         private string _launchId;
+        private SmartAppContext _context;
 
         public SMARTForm()
         {
@@ -30,6 +31,15 @@ namespace EHRApp
             RequestContext rc = new RequestContext(new RequestContextSettings() {
                 CachePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"CefSharp\Cache")
             });
+            _context = new SmartAppContext();
+            var lc = SimulatedFhirServer.LaunchContexts[_launchId];
+            _context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("patient", lc.Patient.Id));
+
+            _context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("organization", "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-0"));
+            _context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitioner", "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-1"));
+            _context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitionerrole", "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-1-1"));
+
+            rc.RegisterSchemeHandlerFactory("https", "identity.localhost", new AuthProtocolSchemeHandlerFactory(_context));
             rc.RegisterSchemeHandlerFactory("https", "sqlonfhir-r4.azurewebsites.net", new CustomProtocolSchemeHandlerFactory(_launchId));
             _browser = new ChromiumWebBrowser("about:blank", rc)
             {
