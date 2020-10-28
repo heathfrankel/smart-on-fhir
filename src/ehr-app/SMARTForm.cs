@@ -124,5 +124,15 @@ namespace EHRApp
         {
             _browser.Reload();
         }
+
+        private void developerToolsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            _browser.ShowDevTools();
+        }
+
+        private void refreshToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            _browser.Reload();
+        }
     }
 }
