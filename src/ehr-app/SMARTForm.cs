@@ -1,6 +1,7 @@
 ﻿using CefSharp;
 using CefSharp.WinForms;
 using System;
+using System.IO;
 using System.Security.Cryptography.X509Certificates;
 using System.Windows.Forms;
 
@@ -26,7 +27,9 @@ namespace EHRApp
         {
             base.OnLoad(e);
 
-            RequestContext rc = new RequestContext();
+            RequestContext rc = new RequestContext(new RequestContextSettings() {
+                CachePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"CefSharp\Cache")
+            });
             rc.RegisterSchemeHandlerFactory("https", "sqlonfhir-r4.azurewebsites.net", new CustomProtocolSchemeHandlerFactory(_launchId));
             _browser = new ChromiumWebBrowser("about:blank", rc)
             {
