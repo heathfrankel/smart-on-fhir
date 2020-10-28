@@ -45,7 +45,8 @@ namespace EHRApp
             Cef.EnableHighDPISupport();
             var settings = new CefSettings
             {
-                CachePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"CefSharp\Cachce")
+                CachePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"CefSharp\Cache")
+                , RemoteDebuggingPort = 8080
             };
             SimulatedFhirServer.RegisterHandler(settings);
             Cef.Initialize(settings, performDependencyCheck: true, browserProcessHandler: null);
