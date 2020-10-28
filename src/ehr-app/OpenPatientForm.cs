@@ -24,6 +24,7 @@ namespace EHRApp
         
         public void PopulateListView(Bundle bundle)
         {
+            patientListView.Items.Clear();
             foreach (Bundle.EntryComponent entry in bundle.Entry)
             {
                 Patient patient = entry.Resource as Patient;
@@ -35,10 +36,14 @@ namespace EHRApp
                     Tag = $"Patient/{patient.Id}"
                     //Tag = patient.Id
                 };
-                HumanName name = patient.Name.First();
-                item.SubItems.Add($"{name.Given.First()} {name.Family}");
+                HumanName name = patient.Name.FirstOrDefault();
+                if (name != null)
+                    item.SubItems.Add($"{name.Given.FirstOrDefault()} {name.Family}");
+                else
+                    item.SubItems.Add($"(no name)");
                 item.SubItems.Add(patient.BirthDate);
-                item.SubItems.Add(CalculateAge(patient.BirthDateElement?.ToDateTime()));
+                if (!string.IsNullOrEmpty(patient.BirthDate))
+                    item.SubItems.Add(CalculateAge(patient.BirthDateElement?.ToDateTime()));
                 patientListView.Items.Add(item);
             }
         }
@@ -80,9 +85,11 @@ namespace EHRApp
         {
             try
             {
-                return FhirClient.Search<Patient>(new string[] { $"name={name}" });
+                if (!string.IsNullOrEmpty(name))
+                    return FhirClient.Search<Patient>(new string[] { $"name={name}" });
+                return FhirClient.Search<Patient>();
             }
-            catch(FhirOperationException ex)
+            catch (FhirOperationException ex)
             {
                 MessageBox.Show(ex.Message);
                 return null;
@@ -114,6 +121,16 @@ namespace EHRApp
             {
                 e.Handled = true;
                 findWhoButton.PerformClick();
+            }
+        }
+
+        private void patientListView_DoubleClick(object sender, EventArgs e)
+        {
+            if (patientListView.SelectedItems.Count > 0)
+            {
+                SelectedPatientId = patientListView.SelectedItems[0].Tag as string;
+                DialogResult = DialogResult.OK;
+                Close();
             }
         }
     }
