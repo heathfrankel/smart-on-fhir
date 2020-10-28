@@ -1,4 +1,5 @@
 ﻿using Hl7.Fhir.Model;
+using Hl7.Fhir.Support;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -118,9 +119,8 @@ namespace EHRApp
 
             string applicationKey = ReflectionUtility.GetPropertyValue(sender, "Tag", string.Empty) as string;
             SmartApplication application = Globals.GetSmartApplicationSettings(applicationKey);
-
+            smartForm.LoadSmartApp(application, Globals.ApplicationSettings.FhirBaseUrl, Guid.NewGuid().ToFhirId(), patientData);
             smartForm.Show();
-            smartForm.LoadSmartApp(application, Globals.ApplicationSettings.FhirBaseUrl, "0a25036c-ed4c-4fad-a806-3dec4d58bc42", patientData);
         }
 
         private void fastFormsQuestionnaireToolStripMenuItem_Click(object sender, EventArgs e)
@@ -137,9 +137,8 @@ namespace EHRApp
 
             string applicationKey = ReflectionUtility.GetPropertyValue(sender, "Tag", string.Empty) as string;
             SmartApplication application = Globals.GetSmartApplicationSettings(applicationKey);
-
+            smartForm.LoadSmartApp(application, Globals.ApplicationSettings.FhirBaseUrl, Guid.NewGuid().ToFhirId(), patientData);
             smartForm.Show();
-            smartForm.LoadSmartApp(application, Globals.ApplicationSettings.FhirBaseUrl, "0b25036c-ed4c-4fad-a806-3dec4d58bc43", patientData);
         }
     }
 }

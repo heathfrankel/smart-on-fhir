@@ -50,11 +50,20 @@ namespace EHRApp
 
     public class CustomProtocolSchemeHandlerFactory : ISchemeHandlerFactory
     {
+        public CustomProtocolSchemeHandlerFactory()
+        {
+        }
+
+        public CustomProtocolSchemeHandlerFactory(string launchId)
+        {
+            _launchId = launchId;
+        }
         public const string SchemeName = "customFileProtocol";
+        private string _launchId;
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
-            return new CustomProtocolSchemeHandler();
+            return new CustomProtocolSchemeHandler(_launchId);
         }
     }
 
@@ -83,15 +92,13 @@ namespace EHRApp
 
     public class CustomProtocolSchemeHandler : ResourceHandler
     {
-        // Specifies where you bundled app resides.
-        // Basically path to your index.html
-        private string frontendFolderPath;
         Dictionary<string, string> Bearers = new Dictionary<string, string>();
         Dictionary<string, string> Codes = new Dictionary<string, string>();
+        string _launchId;
 
-        public CustomProtocolSchemeHandler()
+        public CustomProtocolSchemeHandler(string launchId)
         {
-            frontendFolderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "./bundle/");
+            _launchId = launchId;
         }
 
         // Process request and craft response.
@@ -161,6 +168,11 @@ namespace EHRApp
                         practitioner = "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-1",
                         practitionerrole = "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-1-1"
                     };
+                    if (SimulatedFhirServer.LaunchContexts.ContainsKey(_launchId))
+                    {
+                        var lc = SimulatedFhirServer.LaunchContexts[_launchId];
+                        responseToken.patient = lc.Patient.Id;
+                    }
 
                     base.StatusCode = (int)System.Net.HttpStatusCode.OK;
                     string json = JsonConvert.SerializeObject(responseToken);

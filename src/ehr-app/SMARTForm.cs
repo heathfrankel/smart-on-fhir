@@ -1,6 +1,7 @@
 ﻿using CefSharp;
 using CefSharp.WinForms;
 using System;
+using System.Security.Cryptography.X509Certificates;
 using System.Windows.Forms;
 
 namespace EHRApp
@@ -25,19 +26,21 @@ namespace EHRApp
         {
             base.OnLoad(e);
 
-            _browser = new ChromiumWebBrowser("about:blank")
+            RequestContext rc = new RequestContext();
+            rc.RegisterSchemeHandlerFactory("https", "sqlonfhir-r4.azurewebsites.net", new CustomProtocolSchemeHandlerFactory(_launchId));
+            _browser = new ChromiumWebBrowser("about:blank", rc)
             {
                 Dock = DockStyle.Fill
             };
             panel2.Controls.Add(_browser);
-            
+
             _browser.ConsoleMessage += OnBrowserConsoleMessage;
             _browser.StatusMessage += OnBrowserStatusMessage;
             _browser.TitleChanged += OnBrowserTitleChanged;
             _browser.AddressChanged += OnBrowserAddressChanged;
             _browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
             _browser.IsBrowserInitializedChanged += _browser_IsBrowserInitializedChanged;
-            _browser.LoadError += _browser_LoadError; 
+            _browser.LoadError += _browser_LoadError;
 
             string bitness = Environment.Is64BitProcess ? "x64" : "x86";
             string version = $"Chromium: {Cef.ChromiumVersion}, CEF: {Cef.CefVersion}, Environment: {Cef.CefSharpVersion}";
@@ -60,7 +63,7 @@ namespace EHRApp
 
         private void OnBrowserLoadingStateChanged(object sender, LoadingStateChangedEventArgs e)
         {
-            textBoxAddress.InvokeOnUiThreadIfRequired(() => 
+            textBoxAddress.InvokeOnUiThreadIfRequired(() =>
             {
                 if (textBoxAddress.Text != _browser.Address)
                     textBoxAddress.Text = _browser.Address;
@@ -88,10 +91,8 @@ namespace EHRApp
             _launchId = launchId;
             SimulatedFhirServer.LaunchContexts.Add(launchId, patientData);
             _url = $"{application.Url}?iss={fhirBaseUrl}&launch={launchId}";
-            if (_browser.IsBrowserInitialized)
-                _browser.Load(_url);
         }
-        
+
         private void OnBrowserAddressChanged(object sender, AddressChangedEventArgs e)
         {
             if (string.IsNullOrEmpty(e.Address)) return;
@@ -115,8 +116,7 @@ namespace EHRApp
         {
             this.InvokeOnUiThreadIfRequired(() =>
             {
-                System.Diagnostics.Trace.WriteLine($"Line: {e.Line}, Source: {e.Source}, Message: {e.Message}");
-                GetMdiParent().DisplayOutput($"Line: {e.Line}, Source: {e.Source}, Message: {e.Message}");
+                Console.WriteLine($"Line: {e.Line}, Source: {e.Source}, Message: {e.Message}");
             });
         }
 
