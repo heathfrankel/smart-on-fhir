@@ -36,8 +36,8 @@
             this.panel2 = new System.Windows.Forms.Panel();
             this.menuStrip1 = new System.Windows.Forms.MenuStrip();
             this.smartAppToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.developerToolsToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
             this.refreshToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.developerToolsToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
             this.panel1.SuspendLayout();
             this.menuStrip1.SuspendLayout();
             this.SuspendLayout();
@@ -69,7 +69,7 @@
             this.panel1.Controls.Add(this.button1);
             this.panel1.Controls.Add(this.progressBar1);
             this.panel1.Dock = System.Windows.Forms.DockStyle.Top;
-            this.panel1.Location = new System.Drawing.Point(0, 33);
+            this.panel1.Location = new System.Drawing.Point(0, 0);
             this.panel1.Name = "panel1";
             this.panel1.Size = new System.Drawing.Size(1004, 28);
             this.panel1.TabIndex = 2;
@@ -86,14 +86,13 @@
             // panel2
             // 
             this.panel2.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.panel2.Location = new System.Drawing.Point(0, 61);
+            this.panel2.Location = new System.Drawing.Point(0, 28);
             this.panel2.Name = "panel2";
-            this.panel2.Size = new System.Drawing.Size(1004, 761);
+            this.panel2.Size = new System.Drawing.Size(1004, 794);
             this.panel2.TabIndex = 3;
             // 
             // menuStrip1
             // 
-            this.menuStrip1.GripMargin = new System.Windows.Forms.Padding(2, 2, 0, 2);
             this.menuStrip1.ImageScalingSize = new System.Drawing.Size(24, 24);
             this.menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.smartAppToolStripMenuItem});
@@ -113,14 +112,6 @@
             this.smartAppToolStripMenuItem.Size = new System.Drawing.Size(114, 29);
             this.smartAppToolStripMenuItem.Text = "Smart App";
             // 
-            // developerToolsToolStripMenuItem1
-            // 
-            this.developerToolsToolStripMenuItem1.Name = "developerToolsToolStripMenuItem1";
-            this.developerToolsToolStripMenuItem1.ShortcutKeys = System.Windows.Forms.Keys.F12;
-            this.developerToolsToolStripMenuItem1.Size = new System.Drawing.Size(282, 34);
-            this.developerToolsToolStripMenuItem1.Text = "Developer Tools";
-            this.developerToolsToolStripMenuItem1.Click += new System.EventHandler(this.developerToolsToolStripMenuItem_Click);
-            // 
             // refreshToolStripMenuItem
             // 
             this.refreshToolStripMenuItem.Name = "refreshToolStripMenuItem";
@@ -128,6 +119,14 @@
             this.refreshToolStripMenuItem.Size = new System.Drawing.Size(282, 34);
             this.refreshToolStripMenuItem.Text = "Refresh";
             this.refreshToolStripMenuItem.Click += new System.EventHandler(this.refreshToolStripMenuItem_Click);
+            // 
+            // developerToolsToolStripMenuItem1
+            // 
+            this.developerToolsToolStripMenuItem1.Name = "developerToolsToolStripMenuItem1";
+            this.developerToolsToolStripMenuItem1.ShortcutKeys = System.Windows.Forms.Keys.F12;
+            this.developerToolsToolStripMenuItem1.Size = new System.Drawing.Size(282, 34);
+            this.developerToolsToolStripMenuItem1.Text = "Developer Tools";
+            this.developerToolsToolStripMenuItem1.Click += new System.EventHandler(this.developerToolsToolStripMenuItem_Click);
             // 
             // SMARTForm
             // 
