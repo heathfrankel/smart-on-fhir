@@ -16,7 +16,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             _context = context;
         }
         IFhirSmartAppContext _context;
-        public const string SchemeName = "FhirAuthProtocol";
+        public const string SchemeName = "LocalFhirSmartAuthProtocol";
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
