@@ -57,7 +57,6 @@
             this.statusBarToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolsMenu = new System.Windows.Forms.ToolStripMenuItem();
             this.optionsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.pediatricGrowthApplicationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.windowsMenu = new System.Windows.Forms.ToolStripMenuItem();
             this.newWindowToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.cascadeToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -80,11 +79,9 @@
             this.printPreviewToolStripButton = new System.Windows.Forms.ToolStripButton();
             this.toolStripSeparator2 = new System.Windows.Forms.ToolStripSeparator();
             this.helpToolStripButton = new System.Windows.Forms.ToolStripButton();
-            this.pediatricGrowthChartStripButton = new System.Windows.Forms.ToolStripButton();
             this.statusStrip = new System.Windows.Forms.StatusStrip();
             this.toolStripStatusLabel = new System.Windows.Forms.ToolStripStatusLabel();
             this.toolTip = new System.Windows.Forms.ToolTip(this.components);
-            this.fastFormsQuestionnaireToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.menuStrip.SuspendLayout();
             this.toolStrip.SuspendLayout();
             this.statusStrip.SuspendLayout();
@@ -325,9 +322,8 @@
             // toolsMenu
             // 
             this.toolsMenu.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.optionsToolStripMenuItem,
-            this.pediatricGrowthApplicationToolStripMenuItem,
-            this.fastFormsQuestionnaireToolStripMenuItem});
+            this.optionsToolStripMenuItem
+            });
             this.toolsMenu.Name = "toolsMenu";
             this.toolsMenu.Size = new System.Drawing.Size(58, 24);
             this.toolsMenu.Text = "&Tools";
@@ -337,15 +333,6 @@
             this.optionsToolStripMenuItem.Name = "optionsToolStripMenuItem";
             this.optionsToolStripMenuItem.Size = new System.Drawing.Size(334, 26);
             this.optionsToolStripMenuItem.Text = "&Options";
-            // 
-            // pediatricGrowthApplicationToolStripMenuItem
-            // 
-            this.pediatricGrowthApplicationToolStripMenuItem.Name = "pediatricGrowthApplicationToolStripMenuItem";
-            this.pediatricGrowthApplicationToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.G)));
-            this.pediatricGrowthApplicationToolStripMenuItem.Size = new System.Drawing.Size(334, 26);
-            this.pediatricGrowthApplicationToolStripMenuItem.Tag = "PediatricGrowthChart";
-            this.pediatricGrowthApplicationToolStripMenuItem.Text = "Pediatric &Growth Application";
-            this.pediatricGrowthApplicationToolStripMenuItem.Click += new System.EventHandler(this.OpenPediatricGrowthChartApplication);
             // 
             // windowsMenu
             // 
@@ -459,8 +446,7 @@
             this.printToolStripButton,
             this.printPreviewToolStripButton,
             this.toolStripSeparator2,
-            this.helpToolStripButton,
-            this.pediatricGrowthChartStripButton});
+            this.helpToolStripButton});
             this.toolStrip.Location = new System.Drawing.Point(0, 28);
             this.toolStrip.Name = "toolStrip";
             this.toolStrip.Size = new System.Drawing.Size(944, 31);
@@ -532,17 +518,6 @@
             this.helpToolStripButton.Size = new System.Drawing.Size(29, 28);
             this.helpToolStripButton.Text = "Help";
             // 
-            // pediatricGrowthChartStripButton
-            // 
-            this.pediatricGrowthChartStripButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
-            this.pediatricGrowthChartStripButton.Image = ((System.Drawing.Image)(resources.GetObject("pediatricGrowthChartStripButton.Image")));
-            this.pediatricGrowthChartStripButton.ImageTransparentColor = System.Drawing.Color.Magenta;
-            this.pediatricGrowthChartStripButton.Name = "pediatricGrowthChartStripButton";
-            this.pediatricGrowthChartStripButton.Size = new System.Drawing.Size(29, 28);
-            this.pediatricGrowthChartStripButton.Tag = "PediatricGrowthChart";
-            this.pediatricGrowthChartStripButton.Text = "Pediatric Growth Application";
-            this.pediatricGrowthChartStripButton.Click += new System.EventHandler(this.OpenPediatricGrowthChartApplication);
-            // 
             // statusStrip
             // 
             this.statusStrip.ImageScalingSize = new System.Drawing.Size(24, 24);
@@ -560,15 +535,6 @@
             this.toolStripStatusLabel.Name = "toolStripStatusLabel";
             this.toolStripStatusLabel.Size = new System.Drawing.Size(49, 20);
             this.toolStripStatusLabel.Text = "Status";
-            // 
-            // fastFormsQuestionnaireToolStripMenuItem
-            // 
-            this.fastFormsQuestionnaireToolStripMenuItem.Name = "fastFormsQuestionnaireToolStripMenuItem";
-            this.fastFormsQuestionnaireToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Q)));
-            this.fastFormsQuestionnaireToolStripMenuItem.Size = new System.Drawing.Size(334, 26);
-            this.fastFormsQuestionnaireToolStripMenuItem.Tag = "FastForms";
-            this.fastFormsQuestionnaireToolStripMenuItem.Text = "Fast Forms Questionnaire";
-            this.fastFormsQuestionnaireToolStripMenuItem.Click += new System.EventHandler(this.fastFormsQuestionnaireToolStripMenuItem_Click);
             // 
             // MDIParent
             // 
@@ -649,9 +615,6 @@
         private System.Windows.Forms.ToolStripButton helpToolStripButton;
         private System.Windows.Forms.ToolTip toolTip;
         private System.Windows.Forms.ToolStripMenuItem patientToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem pediatricGrowthApplicationToolStripMenuItem;
-        private System.Windows.Forms.ToolStripButton pediatricGrowthChartStripButton;
-        private System.Windows.Forms.ToolStripMenuItem fastFormsQuestionnaireToolStripMenuItem;
     }
 }
 

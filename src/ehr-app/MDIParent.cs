@@ -21,6 +21,23 @@ namespace EHRApp
             InitializeComponent();
         }
 
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            // Add in all the registered SMART applications
+            foreach (SmartApplication settings in Globals.SmartAppSettings.SmartApplications)
+            {
+                var toolbarItem = new ToolStripMenuItem();
+                toolbarItem.Name = $"MenuItem_{settings.Key}";
+                toolbarItem.Size = new System.Drawing.Size(334, 26);
+                toolbarItem.Tag = settings.Key;
+                toolbarItem.Text = settings.Name;
+                toolbarItem.Click += new System.EventHandler(smartAppLaunchToolbarItem_Click);
+                
+                toolsMenu.DropDownItems.Add(toolbarItem);
+            }
+        }
+
         private void ShowNewForm(object sender, EventArgs e)
         {
             
@@ -105,25 +122,7 @@ namespace EHRApp
             }
         }
 
-        private void OpenPediatricGrowthChartApplication(object sender, EventArgs e)
-        {
-            IPatientData patientData = ActiveMdiChild as IPatientData;
-            if (patientData == null)
-            {
-                MessageBox.Show(this, "No patient has been selected, please select a patient", "No patient selected", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            SMARTForm smartForm = new SMARTForm();
-            smartForm.MdiParent = this;
-            smartForm.WindowState = ActiveMdiChild.WindowState; // FormWindowState.Maximized;
-
-            string applicationKey = ReflectionUtility.GetPropertyValue(sender, "Tag", string.Empty) as string;
-            SmartApplication application = Globals.GetSmartApplicationSettings(applicationKey);
-            smartForm.LoadSmartApp(application, Globals.ApplicationSettings.FhirBaseUrl, Guid.NewGuid().ToFhirId(), patientData);
-            smartForm.Show();
-        }
-
-        private void fastFormsQuestionnaireToolStripMenuItem_Click(object sender, EventArgs e)
+        private void smartAppLaunchToolbarItem_Click(object sender, EventArgs e)
         {
             IPatientData patientData = ActiveMdiChild as IPatientData;
             if (patientData == null)
