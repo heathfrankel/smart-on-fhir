@@ -1,4 +1,5 @@
 ﻿using Hl7.Fhir.Model;
+using Hl7.Fhir.SmartAppLaunch;
 using Hl7.Fhir.Support;
 using System;
 using System.Collections.Generic;
@@ -25,7 +26,7 @@ namespace EHRApp
         {
             base.OnLoad(e);
             // Add in all the registered SMART applications
-            foreach (SmartApplication settings in Globals.SmartAppSettings.SmartApplications)
+            foreach (SmartApplicationDetails settings in Globals.SmartAppSettings.SmartApplications)
             {
                 var toolbarItem = new ToolStripMenuItem();
                 toolbarItem.Name = $"MenuItem_{settings.Key}";
@@ -130,13 +131,23 @@ namespace EHRApp
                 MessageBox.Show(this, "No patient has been selected, please select a patient", "No patient selected", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+
+            string applicationKey = ReflectionUtility.GetPropertyValue(sender, "Tag", string.Empty) as string;
+            SmartApplicationDetails application = Globals.GetSmartApplicationSettings(applicationKey);
+
+            var context = new SmartAppContext() { LaunchContext = Guid.NewGuid().ToFhirId(), PatientNameForDebug = patientData.Patient.Name.FirstOrDefault().Text };
+            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("patient", patientData.Patient.Id));
+            Console.WriteLine($"Opening Smart App {application.Name}: {context.LaunchContext}             Patient/{patientData.Patient.Id} {patientData.Patient.Name.FirstOrDefault().Text}");
+
+            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("organization", "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-0"));
+            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitioner", "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-1"));
+            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitionerrole", "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-1-1"));
+
             SMARTForm smartForm = new SMARTForm();
             smartForm.MdiParent = this;
             smartForm.WindowState = ActiveMdiChild.WindowState; // FormWindowState.Maximized;
 
-            string applicationKey = ReflectionUtility.GetPropertyValue(sender, "Tag", string.Empty) as string;
-            SmartApplication application = Globals.GetSmartApplicationSettings(applicationKey);
-            smartForm.LoadSmartApp(application, Globals.ApplicationSettings.FhirBaseUrl, Guid.NewGuid().ToFhirId(), patientData);
+            smartForm.LoadSmartApp(application, context);
             smartForm.Show();
         }
     }

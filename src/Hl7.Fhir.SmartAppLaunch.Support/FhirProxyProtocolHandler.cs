@@ -4,42 +4,34 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using CefSharp;
-using CefSharp.WinForms;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.SmartAppLaunch;
 using Hl7.Fhir.Support;
 using Newtonsoft.Json;
 
-namespace EHRApp
+namespace Hl7.Fhir.SmartAppLaunch
 {
-    public static class SimulatedFhirServer
+    public class FhirProxyProtocolSchemeHandlerFactory : ISchemeHandlerFactory
     {
-        internal static Dictionary<string, IPatientData> LaunchContexts { get; } = new Dictionary<string, IPatientData>();
-    }
-
-    public class CustomProtocolSchemeHandlerFactory : ISchemeHandlerFactory
-    {
-        public CustomProtocolSchemeHandlerFactory(string launchId)
+        public FhirProxyProtocolSchemeHandlerFactory(IFhirSmartAppContext launchContext)
         {
-            _launchId = launchId;
+            _launchContext = launchContext;
         }
-        public const string SchemeName = "customFileProtocol";
-        private string _launchId;
+        private IFhirSmartAppContext _launchContext;
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
-            return new CustomProtocolSchemeHandler(_launchId);
+            return new FhirProxyProtocolSchemeHandler(_launchContext);
         }
     }
 
-    public class CustomProtocolSchemeHandler : ResourceHandler
+    public class FhirProxyProtocolSchemeHandler : ResourceHandler
     {
-        Dictionary<string, string> Codes = new Dictionary<string, string>();
-        string _launchId;
+        private IFhirSmartAppContext _launchContext;
 
-        public CustomProtocolSchemeHandler(string launchId)
+        public FhirProxyProtocolSchemeHandler(IFhirSmartAppContext launchContext)
         {
-            _launchId = launchId;
+            _launchContext = launchContext;
         }
 
         // Process request and craft response.
@@ -60,7 +52,7 @@ namespace EHRApp
             try
             {
                 // This is a regular request
-                Hl7.Fhir.Rest.FhirClient server = new Hl7.Fhir.Rest.FhirClient("https://sqlonfhir-r4.azurewebsites.net");
+                Hl7.Fhir.Rest.FhirClient server = new Hl7.Fhir.Rest.FhirClient("http://localhost:4178");
                 server.OnAfterResponse += (sender, args) =>
                 {
                     base.Charset = args.RawResponse.CharacterSet;
@@ -83,7 +75,10 @@ namespace EHRApp
                             {
                                 base.StatusCode = (int)fe.Status;
                                 if (fe.Outcome != null)
+                                {
                                     base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(fe.Outcome));
+                                    base.MimeType = "application/fhir+json";
+                                }
                                 callback.Continue();
                                 System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
                                 return null;
@@ -109,13 +104,13 @@ namespace EHRApp
                             }
                             // remove the existing authentications, and put in our own
                             extension.Extension.Clear();
-                            extension.AddExtension("token", new FhirUri("https://identity.localhost/token"));
-                            extension.AddExtension("authorize", new FhirUri("https://identity.localhost/authorize"));
+                            extension.AddExtension("token", new FhirUri($"https://{_launchContext.LaunchContext}.identity.localhost/token"));
+                            extension.AddExtension("authorize", new FhirUri($"https://{_launchContext.LaunchContext}.identity.localhost/authorize"));
                         }
 
                         base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
                         Console.WriteLine($"Success: {base.Stream.Length}");
-                        base.MimeType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(base.Headers["Content-Type"]).MediaType;
+                        base.MimeType = "application/fhir+json";
                         callback.Continue();
                         return r.Result;
                     });

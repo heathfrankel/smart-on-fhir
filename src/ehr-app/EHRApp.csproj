@@ -12,11 +12,12 @@
     <OutputType>WinExe</OutputType>
     <RootNamespace>EHRApp</RootNamespace>
     <AssemblyName>EHRApp</AssemblyName>
-    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>x86</PlatformTarget>
@@ -73,6 +74,9 @@
     </Reference>
     <Reference Include="Hl7.Fhir.R4.Core, Version=1.9.0.0, Culture=neutral, PublicKeyToken=d706911480550fc3, processorArchitecture=MSIL">
       <HintPath>..\..\packages\Hl7.Fhir.R4.1.9.0\lib\net45\Hl7.Fhir.R4.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Hl7.Fhir.R4.WebApi.Support, Version=1.9.0.0, Culture=neutral, PublicKeyToken=495d9f5735b027bd, processorArchitecture=MSIL">
+      <HintPath>..\..\packages\brianpos.Fhir.R4.WebApi.Support.1.9.0-beta1\lib\netstandard2.0\Hl7.Fhir.R4.WebApi.Support.dll</HintPath>
     </Reference>
     <Reference Include="Hl7.Fhir.Serialization, Version=1.9.0.0, Culture=neutral, PublicKeyToken=d706911480550fc3, processorArchitecture=MSIL">
       <HintPath>..\..\packages\Hl7.Fhir.Serialization.1.9.0\lib\net45\Hl7.Fhir.Serialization.dll</HintPath>
@@ -189,11 +193,9 @@
     <Compile Include="PatientForm.Designer.cs">
       <DependentUpon>PatientForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="SimulatedFhirServer.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ReflectionUtility.cs" />
-    <Compile Include="SmartApplication.cs" />
     <Compile Include="SmartAppContext.cs" />
     <Compile Include="SmartAppSettings.cs" />
     <Compile Include="SMARTForm.cs">
@@ -242,11 +244,13 @@
       <DependentUpon>Settings.settings</DependentUpon>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
+    <None Include="specification.zip" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Hl7.Fhir.Specification.R4" Version="1.9.0" />
     <ProjectReference Include="..\Hl7.Fhir.SmartAppLaunch.Support\Hl7.Fhir.R4.SmartAppLaunch.Support.csproj">
       <Project>{5e0eb7c0-9294-45cf-86a2-a5ce7395aadf}</Project>
       <Name>Hl7.Fhir.R4.SmartAppLaunch.Support</Name>

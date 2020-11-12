@@ -18,6 +18,10 @@
     <CefSharpAnyCpuSupport>true</CefSharpAnyCpuSupport>
   </PropertyGroup>
 
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net462' ">
+    <Reference Include="System.Web" />
+  </ItemGroup>
+
   <Import Project="..\platforms.props" />
   <Import Project="..\fhir-net-web-api.props" />
 

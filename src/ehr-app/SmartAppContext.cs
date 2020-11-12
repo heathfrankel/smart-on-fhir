@@ -20,5 +20,7 @@ namespace EHRApp
         {
             return null;
         }
+
+        public string PatientNameForDebug { get; set; }
     }
 }

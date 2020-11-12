@@ -1,7 +1,11 @@
-﻿namespace EHRApp
+﻿using Hl7.Fhir.SmartAppLaunch;
+
+namespace EHRApp
 {
+    // This will normally come from a database, or app settings, or somewhere else,
+    // and is assumed approved by the Practitioner's organization
     public class SmartAppSettings
     {
-        public SmartApplication[] SmartApplications { get; set; }
+        public SmartApplicationDetails[] SmartApplications { get; set; }
     }
 }
