@@ -18,34 +18,38 @@ namespace Hl7.Fhir.SmartAppLaunch
 {
     public class FhirFacadeProtocolSchemeHandlerFactory : ISchemeHandlerFactory
     {
-        public FhirFacadeProtocolSchemeHandlerFactory(IFhirSmartAppContext launchContext, Func<IFhirSystemServiceR4<IServiceProvider>> facadeFactory)
+        public FhirFacadeProtocolSchemeHandlerFactory(SmartApplicationDetails app, IFhirSmartAppContext launchContext, Func<IFhirSystemServiceR4<IServiceProvider>> facadeFactory)
         {
+            _app = app;
             _launchContext = launchContext;
             _facadeFactory = facadeFactory;
         }
+        private SmartApplicationDetails _app;
         private IFhirSmartAppContext _launchContext;
         private Func<IFhirSystemServiceR4<IServiceProvider>> _facadeFactory;
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
-            return new FhirFacadeProtocolSchemeHandler(_launchContext, _facadeFactory());
+            return new FhirFacadeProtocolSchemeHandler(_app, _launchContext, _facadeFactory());
         }
     }
 
     public class FhirFacadeProtocolSchemeHandler : ResourceHandler
     {
-        private IFhirSmartAppContext _launchContext;
-        private IFhirSystemServiceR4<IServiceProvider> _facade;
-
         readonly string[] SearchQueryParameterNames = { "_summary", "_sort", "_count", "_format" };
         readonly string[] OperationQueryParameterNames = { "_summary", "_format" };
 
 
-        public FhirFacadeProtocolSchemeHandler(IFhirSmartAppContext launchContext, IFhirSystemServiceR4<IServiceProvider> facade)
+        public FhirFacadeProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext launchContext, IFhirSystemServiceR4<IServiceProvider> facade)
         {
+            _app = app;
             _launchContext = launchContext;
             _facade = facade;
         }
+        private SmartApplicationDetails _app;
+        private IFhirSmartAppContext _launchContext;
+        private IFhirSystemServiceR4<IServiceProvider> _facade;
+
 
         // Process request and craft response.
         public override CefReturnValue ProcessRequestAsync(IRequest request, ICallback callback)
@@ -62,6 +66,19 @@ namespace Hl7.Fhir.SmartAppLaunch
             }
             var uri = new Uri(request.Url);
             Console.WriteLine($"-----------------\r\n{request.Url}");
+
+            // Check the bearer header
+            if (!string.IsNullOrEmpty(_launchContext.Bearer))
+            {
+                string bearer = request.GetHeaderByName("authorization");
+                if (bearer != "Bearer " + _launchContext.Bearer)
+                {
+                    base.StatusCode = (int)HttpStatusCode.Unauthorized;
+                    callback.Continue();
+                    return CefReturnValue.Continue;
+                }
+            }
+
             try
             {
                 // This is a regular request
@@ -78,7 +95,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                 string redirectedUrl = server.Endpoint.OriginalString.TrimEnd('/') + uri.PathAndQuery;
                 System.Diagnostics.Trace.WriteLine($"{redirectedUrl}");
                 var headers = new List<KeyValuePair<string, IEnumerable<string>>>();
-                ModelBaseInputs<IServiceProvider> requestDetails = new ModelBaseInputs<IServiceProvider>(null, null, request.Method, uri, new Uri($"https://{_launchContext.LaunchContext}.comcare-fhir.localhost"), null, headers, null);
+                ModelBaseInputs<IServiceProvider> requestDetails = new ModelBaseInputs<IServiceProvider>(null, null, request.Method, uri, new Uri($"https://{AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_launchContext)}"), null, headers, null);
                 if (request.Method == "GET")
                 {
                     if (uri.LocalPath == "/metadata")
@@ -120,8 +137,8 @@ namespace Hl7.Fhir.SmartAppLaunch
                             }
                             // remove the existing authentications, and put in our own
                             extension.Extension.Clear();
-                            extension.AddExtension("token", new FhirUri($"https://{_launchContext.LaunchContext}.identity.localhost/token"));
-                            extension.AddExtension("authorize", new FhirUri($"https://{_launchContext.LaunchContext}.identity.localhost/authorize"));
+                            extension.AddExtension("token", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token"));
+                            extension.AddExtension("authorize", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize"));
 
                             base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
                             Console.WriteLine($"Success: {base.Stream.Length}");
@@ -259,8 +276,8 @@ namespace Hl7.Fhir.SmartAppLaunch
                             }
                             // remove the existing authentications, and put in our own
                             extension.Extension.Clear();
-                            extension.AddExtension("token", new FhirUri($"https://{_launchContext.LaunchContext}.identity.localhost/token"));
-                            extension.AddExtension("authorize", new FhirUri($"https://{_launchContext.LaunchContext}.identity.localhost/authorize"));
+                            extension.AddExtension("token", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token"));
+                            extension.AddExtension("authorize", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize"));
                         }
 
                         base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));

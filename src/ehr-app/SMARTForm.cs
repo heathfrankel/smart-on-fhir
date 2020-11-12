@@ -15,8 +15,6 @@ namespace EHRApp
         private SmartApplicationDetails _app;
         private IFhirSmartAppContext _context;
 
-        const string _fhirBaseUrl = "legacy-app-fhir-facade.localhost";
-        const string _fhirAuthUrl = "identity.localhost";
 
         public SMARTForm()
         {
@@ -28,8 +26,8 @@ namespace EHRApp
             base.OnClosed(e);
 
             // dispose of the request context too
-            _browser.RequestContext.RegisterSchemeHandlerFactory("https", $"{_context.LaunchContext}.{_fhirAuthUrl}", null);
-            _browser.RequestContext.RegisterSchemeHandlerFactory("https", $"{_context.LaunchContext}.{_fhirBaseUrl}", null);
+            _browser.RequestContext.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.AuthAddress(_context), null);
+            _browser.RequestContext.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), null);
         }
 
         public static IConfigurationRoot Configuration()
@@ -50,9 +48,9 @@ namespace EHRApp
             });
 
             // Register the handlers for this 
-            rc.RegisterSchemeHandlerFactory("https", $"{_context.LaunchContext}.{_fhirAuthUrl}", new AuthProtocolSchemeHandlerFactory(_app, _context));
-            rc.RegisterSchemeHandlerFactory("https", $"{_context.LaunchContext}.{_fhirBaseUrl}", new FhirFacadeProtocolSchemeHandlerFactory(_app, _context, () => { return new ComCare.FhirServer.Models.ComCareSystemService(Configuration()); }));
-            // rc.RegisterSchemeHandlerFactory("https", _context.LaunchContext + "." + _fhirBaseUrl, new CustomProtocolSchemeHandlerFactory(_app, _context));
+            rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.AuthAddress(_context), new AuthProtocolSchemeHandlerFactory(_app, _context));
+            // rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), new FhirFacadeProtocolSchemeHandlerFactory(_app, _context, () => { return new ComCare.FhirServer.Models.ComCareSystemService(Configuration()); }));
+            rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), new FhirProxyProtocolSchemeHandlerFactory(_app, _context, Globals.ApplicationSettings.FhirBaseUrl));
 
             _browser = new ChromiumWebBrowser("about:blank", rc)
             {
@@ -116,7 +114,7 @@ namespace EHRApp
         {
             _app = application;
             _context = context;
-            _url = $"{application.Url}?iss=https://{_context.LaunchContext}.{_fhirBaseUrl}&launch={context.LaunchContext}";
+            _url = $"{application.Url}?iss=https://{AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context)}&launch={context.LaunchContext}";
         }
 
         private void OnBrowserAddressChanged(object sender, AddressChangedEventArgs e)

@@ -11,26 +11,32 @@ namespace Hl7.Fhir.SmartAppLaunch
 {
     public class AuthProtocolSchemeHandlerFactory : ISchemeHandlerFactory
     {
-        public AuthProtocolSchemeHandlerFactory(IFhirSmartAppContext context)
+        public static string AuthAddress(IFhirSmartAppContext context) => $"{context.LaunchContext}.identity.localhost";
+        public static string FhirFacadeAddress(IFhirSmartAppContext context) => $"{context.LaunchContext}.fhir-facade.localhost";
+
+        public AuthProtocolSchemeHandlerFactory(SmartApplicationDetails app, IFhirSmartAppContext context)
         {
+            _app = app;
             _context = context;
         }
-        IFhirSmartAppContext _context;
-        public const string SchemeName = "LocalFhirSmartAuthProtocol";
+        private SmartApplicationDetails _app;
+        private IFhirSmartAppContext _context;
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
-            return new AuthProtocolSchemeHandler(_context);
+            return new AuthProtocolSchemeHandler(_app, _context);
         }
     }
 
     public class AuthProtocolSchemeHandler : ResourceHandler
     {
-        public AuthProtocolSchemeHandler(IFhirSmartAppContext context)
+        public AuthProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext context)
         {
+            _app = app;
             _context = context;
         }
-        IFhirSmartAppContext _context;
+        private SmartApplicationDetails _app;
+        private IFhirSmartAppContext _context;
 
         // Process request and craft response.
         public override CefReturnValue ProcessRequestAsync(IRequest request, ICallback callback)
@@ -39,7 +45,8 @@ namespace Hl7.Fhir.SmartAppLaunch
             {
                 // This is the CORS request, and that's good
                 base.StatusCode = 200;
-                // base.Headers.Add("Access-Control-Allow-Origin", "*");
+                if (!string.IsNullOrEmpty(_app.AllowedHosts))
+                    base.Headers.Add("Access-Control-Allow-Origin", _app.AllowedHosts);
                 base.Headers.Add("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
                 base.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Accept, authorization");
                 callback.Continue();
@@ -62,8 +69,37 @@ namespace Hl7.Fhir.SmartAppLaunch
                     string state = keyValuePairs.FirstOrDefault(k => k.Key == "state").Value;
                     string clientId = keyValuePairs.FirstOrDefault(k => k.Key == "client_id").Value;
                     string clientSecret = keyValuePairs.FirstOrDefault(k => k.Key == "client_secret").Value;
+                    string requestedScopes = keyValuePairs.FirstOrDefault(k => k.Key == "scope").Value;
 
                     // TODO: Validate the redirect URL, client ID, secret (and possibly the referrer value)
+                    if (clientId != _app.ClientID || clientSecret != _app.ClientSecret)
+                    {
+                        base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
+                        // replace this with some Razor content
+                        base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes("<HTML><body>Client ID or Secret bad</body></HTML>"));
+                        base.Headers.Add("Cache-Control", "no-store");
+                        base.Headers.Add("Pragma", "no-cache");
+                        base.MimeType = "text/html;charset=UTF-8";
+
+                        callback.Continue();
+                        return CefReturnValue.Continue;
+                    }
+
+                    if (_app.redirect_uri?.Any() == true && !_app.redirect_uri.Contains(redirectUri))
+                    {
+                        base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
+                        // replace this with some Razor content
+                        base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes("<HTML><body>Bad Redirect URL provided</body></HTML>"));
+                        base.Headers.Add("Cache-Control", "no-store");
+                        base.Headers.Add("Pragma", "no-cache");
+                        base.MimeType = "text/html;charset=UTF-8";
+
+                        callback.Continue();
+                        return CefReturnValue.Continue;
+                    }
+
+                    // Check the scopes
+                    _context.Scopes = requestedScopes;
 
                     // This client (application) is authorized to connect to the system, and we have a logged in user in the system
                     _context.Code = Guid.NewGuid().ToFhirId();
@@ -90,7 +126,43 @@ namespace Hl7.Fhir.SmartAppLaunch
                         }
 
                         string code = keyValuePairs.FirstOrDefault(k => k.Key == "code").Value;
+                        string grant_type = keyValuePairs.FirstOrDefault(k => k.Key == "grant_type").Value;
+                        if (code != _context.Code || grant_type != "authorization_code")
+                        {
+                            base.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
+                            TokenResponse responseTokenError = new TokenResponse()
+                            {
+                                error_description = "Invalid Code or unsupported grant_type requested"
+                            };
+                            string jsonInvalidCode = JsonConvert.SerializeObject(responseTokenError);
+                            Console.WriteLine($"Token: {jsonInvalidCode}");
+                            base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(jsonInvalidCode));
+                            base.Headers.Add("Cache-Control", "no-store");
+                            base.Headers.Add("Pragma", "no-cache");
+                            base.MimeType = "application/json;charset=UTF-8";
 
+                            callback.Continue();
+                            return CefReturnValue.Continue;
+                        }
+
+                        string redirect_uri = keyValuePairs.FirstOrDefault(k => k.Key == "redirect_uri").Value;
+                        if (_app.redirect_uri?.Any() == true && !_app.redirect_uri.Contains(redirect_uri))
+                        {
+                            base.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
+                            TokenResponse responseTokenError = new TokenResponse()
+                            {
+                                error_description = "Invalid redirect_uri provided"
+                            };
+                            string jsonInvalidCode = JsonConvert.SerializeObject(responseTokenError);
+                            Console.WriteLine($"Token: {jsonInvalidCode}");
+                            base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(jsonInvalidCode));
+                            base.Headers.Add("Cache-Control", "no-store");
+                            base.Headers.Add("Pragma", "no-cache");
+                            base.MimeType = "application/json;charset=UTF-8";
+
+                            callback.Continue();
+                            return CefReturnValue.Continue;
+                        }
                     }
 
                     // TODO: additional validation
@@ -103,7 +175,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                         access_token = _context.Bearer,
                         token_type = "Bearer",
                         expires_in = 3600,
-                        scope = "patient/Observation.read patient/Patient.read",
+                        scope = _context.Scopes,
                     };
                     responseToken.patient = _context.ContextProperties.FirstOrDefault(p => p.Key == "patient").Value;
                     responseToken.encounter = _context.ContextProperties.FirstOrDefault(p => p.Key == "encounter").Value;

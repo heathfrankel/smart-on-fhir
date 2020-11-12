@@ -23,7 +23,7 @@ namespace EHRApp
         {
             HumanName name = patient.Name.FirstOrDefault();
             if(name != null)
-                nameTextBox.Text = $"{name.Given.First()} {name.Family}";
+                nameTextBox.Text = $"{name.Given.FirstOrDefault()} {name.Family}";
             genderTextBox.Text = patient.Gender.ToString();
             birthDateTextBox.Text = patient.BirthDate;
             Address address = patient.Address.FirstOrDefault();

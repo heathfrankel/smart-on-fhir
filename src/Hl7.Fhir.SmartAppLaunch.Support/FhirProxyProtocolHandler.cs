@@ -11,28 +11,39 @@ using Newtonsoft.Json;
 
 namespace Hl7.Fhir.SmartAppLaunch
 {
+    /// <summary>
+    /// This is a Demonstration Facade Handler that pretends that the server at the provided address is a local FHIR Facade running in-process
+    /// It does not do any authentication with the remote service.
+    /// </summary>
     public class FhirProxyProtocolSchemeHandlerFactory : ISchemeHandlerFactory
     {
-        public FhirProxyProtocolSchemeHandlerFactory(IFhirSmartAppContext launchContext)
+        public FhirProxyProtocolSchemeHandlerFactory(SmartApplicationDetails app, IFhirSmartAppContext launchContext, string externalFhirServerBaseUrl)
         {
+            _app = app;
             _launchContext = launchContext;
+            _externalFhirServerBaseUrl = externalFhirServerBaseUrl;
         }
+        private SmartApplicationDetails _app;
         private IFhirSmartAppContext _launchContext;
+        private string _externalFhirServerBaseUrl;
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
-            return new FhirProxyProtocolSchemeHandler(_launchContext);
+            return new FhirProxyProtocolSchemeHandler(_app, _launchContext, _externalFhirServerBaseUrl);
         }
     }
 
     public class FhirProxyProtocolSchemeHandler : ResourceHandler
     {
-        private IFhirSmartAppContext _launchContext;
-
-        public FhirProxyProtocolSchemeHandler(IFhirSmartAppContext launchContext)
+        public FhirProxyProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext launchContext, string externalFhirServerBaseUrl)
         {
+            _app = app;
             _launchContext = launchContext;
+            _externalFhirServerBaseUrl = externalFhirServerBaseUrl;
         }
+        private SmartApplicationDetails _app;
+        private IFhirSmartAppContext _launchContext;
+        private string _externalFhirServerBaseUrl;
 
         // Process request and craft response.
         public override CefReturnValue ProcessRequestAsync(IRequest request, ICallback callback)
@@ -52,13 +63,14 @@ namespace Hl7.Fhir.SmartAppLaunch
             try
             {
                 // This is a regular request
-                Hl7.Fhir.Rest.FhirClient server = new Hl7.Fhir.Rest.FhirClient("http://localhost:4178");
+                Hl7.Fhir.Rest.FhirClient server = new Hl7.Fhir.Rest.FhirClient(_externalFhirServerBaseUrl);
                 server.OnAfterResponse += (sender, args) =>
                 {
                     base.Charset = args.RawResponse.CharacterSet;
                     foreach (string header in args.RawResponse.Headers.AllKeys)
                     {
-                        base.Headers.Add(header, args.RawResponse.Headers[header]);
+                        if (!header.StartsWith("Access-Control"))
+                            base.Headers.Add(header, args.RawResponse.Headers[header]);
                     }
                 };
                 server.PreferredFormat = Hl7.Fhir.Rest.ResourceFormat.Json;
@@ -104,8 +116,8 @@ namespace Hl7.Fhir.SmartAppLaunch
                             }
                             // remove the existing authentications, and put in our own
                             extension.Extension.Clear();
-                            extension.AddExtension("token", new FhirUri($"https://{_launchContext.LaunchContext}.identity.localhost/token"));
-                            extension.AddExtension("authorize", new FhirUri($"https://{_launchContext.LaunchContext}.identity.localhost/authorize"));
+                            extension.AddExtension("token", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token"));
+                            extension.AddExtension("authorize", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize"));
                         }
 
                         base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));

@@ -15,8 +15,6 @@ namespace EHRApp
 {
     public partial class MDIParent : Form
     {
-        private int childFormNumber = 0;
-
         public MDIParent()
         {
             InitializeComponent();
@@ -139,9 +137,9 @@ namespace EHRApp
             context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("patient", patientData.Patient.Id));
             Console.WriteLine($"Opening Smart App {application.Name}: {context.LaunchContext}             Patient/{patientData.Patient.Id} {patientData.Patient.Name.FirstOrDefault().Text}");
 
-            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("organization", "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-0"));
-            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitioner", "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-1"));
-            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitionerrole", "B0E0A3ADB59E2F77D6D51ADCA7DAD6B2-1-1"));
+            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("organization", Globals.ApplicationSettings.organization));
+            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitioner", Globals.ApplicationSettings.practitioner));
+            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitionerrole", Globals.ApplicationSettings.practitionerrole));
 
             SMARTForm smartForm = new SMARTForm();
             smartForm.MdiParent = this;
