@@ -133,18 +133,21 @@ namespace EHRApp
             string applicationKey = ReflectionUtility.GetPropertyValue(sender, "Tag", string.Empty) as string;
             SmartApplicationDetails application = Globals.GetSmartApplicationSettings(applicationKey);
 
+            // Read in the clinical context
             var context = new SmartAppContext() { LaunchContext = Guid.NewGuid().ToFhirId(), PatientNameForDebug = patientData.Patient.Name.FirstOrDefault().Text };
             context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("patient", patientData.Patient.Id));
-            Console.WriteLine($"Opening Smart App {application.Name}: {context.LaunchContext}             Patient/{patientData.Patient.Id} {patientData.Patient.Name.FirstOrDefault().Text}");
 
+            // Read in the User context
             context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("organization", Globals.ApplicationSettings.organization));
             context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitioner", Globals.ApplicationSettings.practitioner));
             context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitionerrole", Globals.ApplicationSettings.practitionerrole));
 
+            Console.WriteLine($"Opening Smart App {application.Name}: {context.LaunchContext}             Patient/{patientData.Patient.Id} {patientData.Patient.Name.FirstOrDefault().Text}");
             SMARTForm smartForm = new SMARTForm();
             smartForm.MdiParent = this;
             smartForm.WindowState = ActiveMdiChild.WindowState; // FormWindowState.Maximized;
 
+            // Open the Smart Host with the selected application and context
             smartForm.LoadSmartApp(application, context);
             smartForm.Show();
         }
