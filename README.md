@@ -35,6 +35,8 @@ Note: Step 4 and step 7 might take some time to execute if the web apps are cold
 * Each Launch of a smart application for a patient will have it's own Launch Context, Fhir Facade instance, and Authentication API instance
 * API instances aren't exposed to the HTTP layer, so there is no attach surface open outside the Legacy Application
 * The cefsharp component provides the modern browser experience, without external dependencies
+* The example proxy sample stuff going out to the external server kinda skips browser CORS stuff
+  as the proxy directly calls the remote API, not through the browser
 
 There are several things that your application will need to 
 CORS is implemented to only permit access to it's facade by pages in the registered web app's domain (or others specifically registered for it)
