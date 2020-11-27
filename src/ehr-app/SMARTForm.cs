@@ -1,8 +1,10 @@
 ﻿using CefSharp;
 using CefSharp.WinForms;
+using Hl7.Fhir.SmartAppLaunch;
+using Microsoft.Extensions.Configuration;
 using System;
 using System.IO;
-using System.Security.Cryptography.X509Certificates;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace EHRApp
@@ -10,7 +12,9 @@ namespace EHRApp
     public partial class SMARTForm : Form
     {
         private ChromiumWebBrowser _browser;
-        private string _launchId;
+        private SmartApplicationDetails _app;
+        private IFhirSmartAppContext _context;
+
 
         public SMARTForm()
         {
@@ -19,18 +23,35 @@ namespace EHRApp
 
         protected override void OnClosed(EventArgs e)
         {
-            SimulatedFhirServer.LaunchContexts.Remove(_launchId);
             base.OnClosed(e);
+
+            // dispose of the request context too
+            _browser.RequestContext.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.AuthAddress(_context), null);
+            _browser.RequestContext.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), null);
+        }
+
+        public static IConfigurationRoot Configuration()
+        {
+            return new ConfigurationBuilder()
+                           .SetBasePath(Directory.GetCurrentDirectory())
+                           .AddJsonFile("appsettings.json", optional: false).Build();
         }
 
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
 
+            // This is the path in the users non roaming application folder
+            // (You may consider if this should be removed after use, or even remove the cache path, which is essentially incognito mode)
             RequestContext rc = new RequestContext(new RequestContextSettings() {
                 CachePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"CefSharp\Cache")
             });
-            rc.RegisterSchemeHandlerFactory("https", "sqlonfhir-r4.azurewebsites.net", new CustomProtocolSchemeHandlerFactory(_launchId));
+
+            // Register the handlers for this 
+            rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.AuthAddress(_context), new AuthProtocolSchemeHandlerFactory(_app, _context));
+            // rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), new FhirFacadeProtocolSchemeHandlerFactory(_app, _context, () => { return new ComCare.FhirServer.Models.ComCareSystemService(Configuration()); }));
+            rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), new FhirProxyProtocolSchemeHandlerFactory(_app, _context, Globals.ApplicationSettings.FhirBaseUrl));
+
             _browser = new ChromiumWebBrowser("about:blank", rc)
             {
                 Dock = DockStyle.Fill
@@ -89,11 +110,11 @@ namespace EHRApp
         }
 
         string _url;
-        internal void LoadSmartApp(SmartApplication application, string fhirBaseUrl, string launchId, IPatientData patientData)
+        internal void LoadSmartApp(SmartApplicationDetails application, IFhirSmartAppContext context)
         {
-            _launchId = launchId;
-            SimulatedFhirServer.LaunchContexts.Add(launchId, patientData);
-            _url = $"{application.Url}?iss={fhirBaseUrl}&launch={launchId}";
+            _app = application;
+            _context = context;
+            _url = $"{application.Url}?iss=https://{AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context)}&launch={context.LaunchContext}";
         }
 
         private void OnBrowserAddressChanged(object sender, AddressChangedEventArgs e)
