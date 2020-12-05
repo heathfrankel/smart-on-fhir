@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using CefSharp;
-using Hl7.Fhir.Model;
 using Hl7.Fhir.Support;
 using Newtonsoft.Json;
 
@@ -14,29 +12,33 @@ namespace Hl7.Fhir.SmartAppLaunch
         public static string AuthAddress(IFhirSmartAppContext context) => $"{context.LaunchContext}.identity.localhost";
         public static string FhirFacadeAddress(IFhirSmartAppContext context) => $"{context.LaunchContext}.fhir-facade.localhost";
 
-        public AuthProtocolSchemeHandlerFactory(SmartApplicationDetails app, IFhirSmartAppContext context)
+        public AuthProtocolSchemeHandlerFactory(SmartApplicationDetails app, IFhirSmartAppContext context, Func<SmartApplicationDetails, IFhirSmartAppContext, string> getIdToken = null)
         {
             _app = app;
             _context = context;
+            _getIdToken = getIdToken;
         }
         private SmartApplicationDetails _app;
         private IFhirSmartAppContext _context;
+        private Func<SmartApplicationDetails, IFhirSmartAppContext, string> _getIdToken;
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
-            return new AuthProtocolSchemeHandler(_app, _context);
+            return new AuthProtocolSchemeHandler(_app, _context, _getIdToken);
         }
     }
 
     public class AuthProtocolSchemeHandler : ResourceHandler
     {
-        public AuthProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext context)
+        public AuthProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext context, Func<SmartApplicationDetails, IFhirSmartAppContext, string> getIdToken)
         {
             _app = app;
             _context = context;
+            _getIdToken = getIdToken;
         }
         private SmartApplicationDetails _app;
         private IFhirSmartAppContext _context;
+        private Func<SmartApplicationDetails, IFhirSmartAppContext, string> _getIdToken;
 
         // Process request and craft response.
         public override CefReturnValue ProcessRequestAsync(IRequest request, ICallback callback)
@@ -166,6 +168,15 @@ namespace Hl7.Fhir.SmartAppLaunch
                     }
 
                     // TODO: additional validation
+                    // ...
+
+                    // Grab the id_token if it's required
+                    string id_token = null;
+                    if ((_context.Scopes.Contains("fhirUser") || _context.Scopes.Contains("profile")) && _context.Scopes.Contains("openid") && _getIdToken != null)
+                    {
+                        // Need to also include the id_token
+                        id_token = _getIdToken(_app, _context);
+                    }
 
                     // All has been validated correctly, so we can return the token response
                     _context.ExpiresAt = DateTimeOffset.Now.AddSeconds(3600);
@@ -173,6 +184,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                     TokenResponse responseToken = new TokenResponse()
                     {
                         access_token = _context.Bearer,
+                        id_token = id_token,
                         token_type = "Bearer",
                         expires_in = 3600,
                         scope = _context.Scopes,
@@ -184,6 +196,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                     responseToken.organization = _context.ContextProperties.FirstOrDefault(p => p.Key == "organization").Value;
                     responseToken.practitioner = _context.ContextProperties.FirstOrDefault(p => p.Key == "practitioner").Value;
                     responseToken.practitionerrole = _context.ContextProperties.FirstOrDefault(p => p.Key == "practitionerrole").Value;
+                    responseToken.nash_pub_cert = _context.ContextProperties.FirstOrDefault(p => p.Key == "X-NASH-Public-Cert").Value;
 
                     base.StatusCode = (int)System.Net.HttpStatusCode.OK;
                     string json = JsonConvert.SerializeObject(responseToken);

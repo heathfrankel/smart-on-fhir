@@ -46,5 +46,15 @@ namespace Hl7.Fhir.SmartAppLaunch
         /// This will serve to prevent hosts outside the domain of the smart app that somehow inject themselves into the site from having access to the data server
         /// </summary>
         public string AllowedHosts { get; set; }
+
+        /// <summary>
+        /// When creating the id_token, the Audience that the client is expecting to find
+        /// </summary>
+        public string Audience { get; set; }
+
+        /// <summary>
+        /// When creating the id_token, the Issuer that is configured for the smart App
+        /// </summary>
+        public string Issuer { get; set; }
     }
 }
