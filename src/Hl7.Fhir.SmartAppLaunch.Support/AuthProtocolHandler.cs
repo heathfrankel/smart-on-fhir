@@ -196,6 +196,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                     responseToken.organization = _context.ContextProperties.FirstOrDefault(p => p.Key == "organization").Value;
                     responseToken.practitioner = _context.ContextProperties.FirstOrDefault(p => p.Key == "practitioner").Value;
                     responseToken.practitionerrole = _context.ContextProperties.FirstOrDefault(p => p.Key == "practitionerrole").Value;
+                    responseToken.nash_pub_cert = _context.ContextProperties.FirstOrDefault(p => p.Key == "X-NASH-Public-Cert").Value;
 
                     base.StatusCode = (int)System.Net.HttpStatusCode.OK;
                     string json = JsonConvert.SerializeObject(responseToken);

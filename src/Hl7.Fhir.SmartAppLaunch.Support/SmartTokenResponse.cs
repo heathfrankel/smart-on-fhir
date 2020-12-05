@@ -41,5 +41,9 @@ namespace Hl7.Fhir.SmartAppLaunch
         public string practitioner { get; set; }
         public string practitionerrole { get; set; }
         public string organization { get; set; }
+
+        // NASH Custom Property for Australia
+        [Newtonsoft.Json.JsonProperty("x_nash_public_cert")]
+        public string nash_pub_cert { get; set; }
     }
 }
