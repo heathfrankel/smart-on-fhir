@@ -142,6 +142,13 @@ namespace EHRApp
             context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitioner", Globals.ApplicationSettings.practitioner));
             context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitionerrole", Globals.ApplicationSettings.practitionerrole));
 
+            // And the custom NASH Public key for Australian usage
+            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("X-NASH-Public-Cert", EHRApp.SMARTForm.GetNashPublicKey()));
+
+            // And the other User data
+            context.PractitionerName = "Test Doctor Name"; // read this from the practitioner instead
+            context.MedicareProviderNumber = "976166CH";   // ditto
+
             Console.WriteLine($"Opening Smart App {application.Name}: {context.LaunchContext}             Patient/{patientData.Patient.Id} {patientData.Patient.Name.FirstOrDefault().Text}");
             SMARTForm smartForm = new SMARTForm();
             smartForm.MdiParent = this;

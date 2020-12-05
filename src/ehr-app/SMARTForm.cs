@@ -1,10 +1,13 @@
 ﻿using CefSharp;
 using CefSharp.WinForms;
 using Hl7.Fhir.SmartAppLaunch;
+using Hl7.Fhir.Support;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Windows.Forms;
 
 namespace EHRApp
@@ -43,12 +46,13 @@ namespace EHRApp
 
             // This is the path in the users non roaming application folder
             // (You may consider if this should be removed after use, or even remove the cache path, which is essentially incognito mode)
-            RequestContext rc = new RequestContext(new RequestContextSettings() {
+            RequestContext rc = new RequestContext(new RequestContextSettings()
+            {
                 CachePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"CefSharp\Cache")
             });
 
             // Register the handlers for this 
-            rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.AuthAddress(_context), new AuthProtocolSchemeHandlerFactory(_app, _context));
+            rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.AuthAddress(_context), new AuthProtocolSchemeHandlerFactory(_app, _context, GetIdToken));
             // rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), new FhirFacadeProtocolSchemeHandlerFactory(_app, _context, () => { return new ComCare.FhirServer.Models.ComCareSystemService(Configuration()); }));
             rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), new FhirProxyProtocolSchemeHandlerFactory(_app, _context, Globals.ApplicationSettings.FhirBaseUrl));
 
@@ -69,6 +73,54 @@ namespace EHRApp
             string bitness = Environment.Is64BitProcess ? "x64" : "x86";
             string version = $"Chromium: {Cef.ChromiumVersion}, CEF: {Cef.CefVersion}, Environment: {Cef.CefSharpVersion}";
             GetMdiParent().DisplayOutput(version);
+        }
+
+        public string GetIdToken(SmartApplicationDetails app, IFhirSmartAppContext context)
+        {
+            return GenerateProviderJWTForNcsr(DateTime.Now);
+        }
+
+        public string GenerateProviderJWTForNcsr(DateTime creationTime)
+        {
+            var payload = new
+            {
+                sub = (_context as SmartAppContext).PractitionerId,
+                name = (_context as SmartAppContext).PractitionerName,
+                profile = (_context as SmartAppContext).PractitionerId,
+                iss = _app.Issuer,
+                aud = _app.Audience,
+                exp = creationTime.AddHours(1).ToUnixTime(),
+                jti = Guid.NewGuid().ToFhirId(),
+                iat = creationTime.AddMinutes(-1).ToUnixTime(),
+                nbf = creationTime.AddMinutes(-1).ToUnixTime(),
+                providerNo = (_context as SmartAppContext).MedicareProviderNumber,
+                isDelegate = "N",
+                roles = new[] { "Practitioner", "PracticeManager" },
+                pmsver = "Example EHR v1.34"
+            };
+
+            // Provide the NASH Digital Certificate (with Private Key)
+            X509Certificate2 cert = GetNashCertificate();
+
+            // Now generate the Identity Token
+            string token = Jose.JWT.Encode(payload, cert.GetRSAPrivateKey(), Jose.JwsAlgorithm.RS256);
+            return token;
+        }
+
+        public static X509Certificate2 GetNashCertificate()
+        {
+            // This could be replaced with reading from the Certificate Store, or some other mechanism
+            // TODO: retrieve your NASH certificate
+            return null;
+        }
+
+        public static string GetNashPublicKey()
+        {
+            var cert = GetNashCertificate();
+            var certBytes = cert.Export(X509ContentType.Cert);
+            var certPublic = new X509Certificate2(certBytes);
+            var publicKey = Convert.ToBase64String(UTF8Encoding.UTF8.GetBytes("-----BEGIN CERTIFICATE-----\r\n" + Convert.ToBase64String(certPublic.GetRawCertData()) + "\r\n-----END CERTIFICATE-----"));
+            return publicKey;
         }
 
         private void _browser_IsBrowserInitializedChanged(object sender, EventArgs e)
@@ -157,6 +209,14 @@ namespace EHRApp
         private void refreshToolStripMenuItem_Click(object sender, EventArgs e)
         {
             _browser.Reload();
+        }
+    }
+
+    public static class TokenExtensions
+    {
+        public static long ToUnixTime(this DateTime dateTime)
+        {
+            return (int)(dateTime.ToUniversalTime().Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
         }
     }
 }

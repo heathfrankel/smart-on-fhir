@@ -13,7 +13,7 @@ namespace EHRApp
         public string Scopes { get; set; }
         public DateTimeOffset ExpiresAt { get; set; }
 
-        public List<KeyValuePair<string, string>> ContextProperties { get; }  = new List<KeyValuePair<string, string>>();
+        public List<KeyValuePair<string, string>> ContextProperties { get; } = new List<KeyValuePair<string, string>>();
         IEnumerable<KeyValuePair<string, string>> IFhirSmartAppContext.ContextProperties => ContextProperties;
 
         public string GetIdToken()
@@ -22,5 +22,14 @@ namespace EHRApp
         }
 
         public string PatientNameForDebug { get; set; }
+        public string PractitionerName { get; set; }
+        public string PractitionerId
+        {
+            get
+            {
+                return ContextProperties.FirstOrDefault(cp => cp.Key == "practitioner").Value;
+            }
+        }
+        public string MedicareProviderNumber { get; set; }
     }
 }

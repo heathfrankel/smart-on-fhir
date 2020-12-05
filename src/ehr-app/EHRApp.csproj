@@ -68,6 +68,9 @@
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
     <Prefer32Bit>true</Prefer32Bit>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="Hl7.Fhir.ElementModel, Version=1.9.0.0, Culture=neutral, PublicKeyToken=d706911480550fc3, processorArchitecture=MSIL">
       <HintPath>..\..\packages\Hl7.Fhir.ElementModel.1.9.0\lib\net45\Hl7.Fhir.ElementModel.dll</HintPath>
@@ -251,6 +254,9 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Hl7.Fhir.Specification.R4" Version="1.9.0" />
+    <PackageReference Include="jose-jwt">
+      <Version>2.6.1</Version>
+    </PackageReference>
     <ProjectReference Include="..\Hl7.Fhir.SmartAppLaunch.Support\Hl7.Fhir.R4.SmartAppLaunch.Support.csproj">
       <Project>{5e0eb7c0-9294-45cf-86a2-a5ce7395aadf}</Project>
       <Name>Hl7.Fhir.R4.SmartAppLaunch.Support</Name>
