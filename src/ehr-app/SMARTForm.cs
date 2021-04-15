@@ -125,6 +125,12 @@ namespace EHRApp
 
         private void _browser_IsBrowserInitializedChanged(object sender, EventArgs e)
         {
+            // Sneaky cheat control code to automatically popup the dev tools
+            if ((Control.ModifierKeys & Keys.Control) == Keys.Control)
+            {
+                _browser.ShowDevTools();
+            }
+
             if (!string.IsNullOrEmpty(_url) && _browser.Address != _url)
             {
                 _browser.Load(_url);

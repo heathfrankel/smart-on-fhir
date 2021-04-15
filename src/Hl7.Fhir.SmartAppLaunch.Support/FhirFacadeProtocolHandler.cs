@@ -98,6 +98,27 @@ namespace Hl7.Fhir.SmartAppLaunch
                 ModelBaseInputs<IServiceProvider> requestDetails = new ModelBaseInputs<IServiceProvider>(null, null, request.Method, uri, new Uri($"https://{AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_launchContext)}"), null, headers, null);
                 if (request.Method == "GET")
                 {
+                    if (uri.LocalPath == "/.well-known/smart-configuration")
+                    {
+                        base.StatusCode = 200;
+                        base.MimeType = "application/json";
+
+                        FhirSmartAppLaunchConfiguration smart_config = new FhirSmartAppLaunchConfiguration();
+                        // populate the context based on the data we know
+                        smart_config.token_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token";
+                        smart_config.authorization_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize";
+
+                        var jsonSettings = new Newtonsoft.Json.JsonSerializerSettings() { NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore };
+                        base.Stream = new MemoryStream();
+                        StreamWriter sw = new StreamWriter(base.Stream, System.Text.Encoding.UTF8, 4096, true);
+                        sw.Write(Newtonsoft.Json.JsonConvert.SerializeObject(smart_config, settings: jsonSettings));
+                        sw.Flush();
+
+                        Console.WriteLine($"Success: {base.Stream.Length}");
+                        base.MimeType = "application/fhir+json";
+                        callback.Continue();
+                        return CefReturnValue.Continue;
+                    }
                     if (uri.LocalPath == "/metadata")
                     {
                         _facade.GetConformance(requestDetails, Rest.SummaryType.False).ContinueWith<CapabilityStatement>(r => 

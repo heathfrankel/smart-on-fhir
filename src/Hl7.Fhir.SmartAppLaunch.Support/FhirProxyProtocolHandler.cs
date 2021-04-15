@@ -7,6 +7,7 @@ using CefSharp;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.SmartAppLaunch;
 using Hl7.Fhir.Support;
+using Hl7.Fhir.WebApi;
 using Newtonsoft.Json;
 
 namespace Hl7.Fhir.SmartAppLaunch
@@ -78,6 +79,28 @@ namespace Hl7.Fhir.SmartAppLaunch
                 System.Diagnostics.Trace.WriteLine($"{redirectedUrl}");
                 if (request.Method == "GET")
                 {
+                    if (uri.LocalPath == "/.well-known/smart-configuration")
+                    {
+                        base.StatusCode = 200;
+                        base.MimeType = "application/json";
+
+                        FhirSmartAppLaunchConfiguration smart_config = new FhirSmartAppLaunchConfiguration();
+                        // populate the context based on the data we know
+                        smart_config.token_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token";
+                        smart_config.authorization_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize";
+
+                        var jsonSettings = new Newtonsoft.Json.JsonSerializerSettings() { NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore };
+                        base.Stream = new MemoryStream();
+                        StreamWriter sw = new StreamWriter(base.Stream, System.Text.Encoding.UTF8, 4096, true);
+                        sw.Write(Newtonsoft.Json.JsonConvert.SerializeObject(smart_config, settings: jsonSettings));
+                        sw.Flush();
+
+                        Console.WriteLine($"Success: {base.Stream.Length}");
+                        base.MimeType = "application/fhir+json";
+                        callback.Continue();
+                        return CefReturnValue.Continue;
+                    }
+
                     System.Threading.Tasks.Task<Hl7.Fhir.Model.Resource> t = server.GetAsync(redirectedUrl).ContinueWith<Hl7.Fhir.Model.Resource>(r =>
                     {
                         if (r.Exception != null)

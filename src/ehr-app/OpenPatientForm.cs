@@ -94,6 +94,11 @@ namespace EHRApp
                 MessageBox.Show(ex.Message);
                 return null;
             }
+            catch (System.Net.WebException ex)
+            {
+                MessageBox.Show(ex.Message);
+                return null;
+            }
             catch (ArgumentException ex)
             {
                 MessageBox.Show(ex.Message);
