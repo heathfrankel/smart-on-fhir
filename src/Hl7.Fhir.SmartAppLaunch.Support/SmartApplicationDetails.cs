@@ -23,8 +23,14 @@ namespace Hl7.Fhir.SmartAppLaunch
         /// </summary>
         public string Url { get; set; }
 
+        /// <summary>
+        /// List of redirect URIs that are supported for this SMART application
+        /// </summary>
         public string[] redirect_uri { get; set; }
 
+        /// <summary>
+        /// The OAuth ClientID for this SMART application
+        /// </summary>
         public string ClientID { get; set; }
 
         /// <summary>
@@ -48,7 +54,7 @@ namespace Hl7.Fhir.SmartAppLaunch
         public string AllowedHosts { get; set; }
 
         /// <summary>
-        /// When creating the id_token, the Audience that the client is expecting to find
+        /// When creating the id_token, the Audience that the client is expected to provide (for this smart application)
         /// </summary>
         public string Audience { get; set; }
 

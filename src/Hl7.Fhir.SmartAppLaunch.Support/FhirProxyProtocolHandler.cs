@@ -5,10 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using CefSharp;
 using Hl7.Fhir.Model;
-using Hl7.Fhir.SmartAppLaunch;
-using Hl7.Fhir.Support;
 using Hl7.Fhir.WebApi;
-using Newtonsoft.Json;
 
 namespace Hl7.Fhir.SmartAppLaunch
 {
@@ -82,7 +79,6 @@ namespace Hl7.Fhir.SmartAppLaunch
                     if (uri.LocalPath == "/.well-known/smart-configuration")
                     {
                         base.StatusCode = 200;
-                        base.MimeType = "application/json";
 
                         FhirSmartAppLaunchConfiguration smart_config = new FhirSmartAppLaunchConfiguration();
                         // populate the context based on the data we know
@@ -94,9 +90,11 @@ namespace Hl7.Fhir.SmartAppLaunch
                         StreamWriter sw = new StreamWriter(base.Stream, System.Text.Encoding.UTF8, 4096, true);
                         sw.Write(Newtonsoft.Json.JsonConvert.SerializeObject(smart_config, settings: jsonSettings));
                         sw.Flush();
+                        base.Headers.Add("Cache-Control", "no-store");
+                        base.Headers.Add("Pragma", "no-cache");
+                        base.MimeType = "application/json;charset=UTF-8";
 
                         Console.WriteLine($"Success: {base.Stream.Length}");
-                        base.MimeType = "application/fhir+json";
                         callback.Continue();
                         return CefReturnValue.Continue;
                     }
