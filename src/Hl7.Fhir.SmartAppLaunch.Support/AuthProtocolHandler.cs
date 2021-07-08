@@ -141,7 +141,8 @@ namespace Hl7.Fhir.SmartAppLaunch
             base.Headers.Remove("Location");
             base.Headers.Add("Location", $"{redirectUri}?code={_context.Code}&state={state}");
 
-            callback.Continue();
+            if (!callback.IsDisposed)
+                callback.Continue();
             return CefReturnValue.Continue;
         }
 
@@ -226,7 +227,8 @@ namespace Hl7.Fhir.SmartAppLaunch
             base.Headers.Add("Pragma", "no-cache");
             base.MimeType = "application/json;charset=UTF-8";
 
-            callback.Continue();
+            if (!callback.IsDisposed)
+                callback.Continue();
             return CefReturnValue.Continue;
         }
 
@@ -250,7 +252,8 @@ namespace Hl7.Fhir.SmartAppLaunch
             base.Headers.Add("Pragma", "no-cache");
             base.MimeType = "application/json;charset=UTF-8";
 
-            callback.Continue();
+            if (!callback.IsDisposed)
+                callback.Continue();
         }
 
         public string FilterScopes(string requestedScopes, string[] supportedScopes)
