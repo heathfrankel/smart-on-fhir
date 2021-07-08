@@ -51,14 +51,24 @@ namespace Hl7.Fhir.SmartAppLaunch
         private IFhirSystemServiceR4<IServiceProvider> _facade;
 
 
-        // Process request and craft response.
+        /// <summary>
+        /// Process request and craft response.
+        /// </summary>
+        /// <param name="request"></param>
+        /// <param name="callback"></param>
+        /// <returns></returns>
+        /// <remarks>
+        /// Sample of processing the background execution using Task.Run from the cefsharp documentation
+        /// https://github.com/cefsharp/CefSharp/blob/20dad8aced51e077780ce3fe3b9a3766c15a7102/CefSharp.Example/FlashResourceHandler.cs#L13
+        /// </remarks>
         public override CefReturnValue ProcessRequestAsync(IRequest request, ICallback callback)
         {
             if (request.Method == "OPTIONS")
             {
                 // This is the CORS request, and that's good as we do want to support CORS calls to our "facade"
                 base.StatusCode = 200;
-                // base.Headers.Add("Access-Control-Allow-Origin", "*");
+                //if (!string.IsNullOrEmpty(_app.AllowedHosts))
+                //    base.Headers.Add("Access-Control-Allow-Origin", _app.AllowedHosts);
                 base.Headers.Add("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
                 base.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Accept, authorization");
                 callback.Continue();
@@ -89,12 +99,22 @@ namespace Hl7.Fhir.SmartAppLaunch
                 {
                     if (uri.LocalPath == "/.well-known/smart-configuration")
                     {
-                        base.StatusCode = 200;
+                        base.StatusCode = (int)HttpStatusCode.OK;
 
+                        // http://build.fhir.org/ig/HL7/smart-app-launch/conformance.html
                         FhirSmartAppLaunchConfiguration smart_config = new FhirSmartAppLaunchConfiguration();
                         // populate the context based on the data we know
-                        smart_config.token_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token";
+                        smart_config.issuer = _app.Issuer;
                         smart_config.authorization_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize";
+                        smart_config.token_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token";
+                        smart_config.scopes_supported = _app.AllowedScopes;
+                        smart_config.response_types_supported = new[] { "code", "code id_token" };
+                        var capabilities = new List<string> { "launch-ehr", "permission-v2", "context-ehr-patient", "authorize-post" };
+                        if (String.IsNullOrEmpty(_app.ClientSecret))
+                            capabilities.Add("client-public");
+                        else
+                            capabilities.Add("client-confidential-symmetric");
+                        smart_config.capabilities = capabilities;
 
                         var jsonSettings = new Newtonsoft.Json.JsonSerializerSettings() { NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore };
                         base.Stream = new MemoryStream();
@@ -111,14 +131,14 @@ namespace Hl7.Fhir.SmartAppLaunch
                     }
                     if (uri.LocalPath == "/metadata")
                     {
-                        System.Threading.Tasks.Task.Run(() => _facade.GetConformance(requestDetails, Rest.SummaryType.False).ContinueWith<CapabilityStatement>(r => 
+                        System.Threading.Tasks.Task.Run(() => _facade.GetConformance(requestDetails, Rest.SummaryType.False).ContinueWith<CapabilityStatement>(r =>
                         {
                             if (r.Exception != null)
                             {
-                                ReportExceptionMessageProcessingRequest(r, callback);
+                                SetErrorResponse(callback, r.Exception);
                                 return null;
                             }
-                            base.StatusCode = 200;
+                            base.StatusCode = (int)HttpStatusCode.OK;
 
                             // As per the documentation http://hl7.org/fhir/smart-app-launch/conformance/index.html
                             CapabilityStatement cs = r.Result;
@@ -174,7 +194,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                             {
                                 if (r.Exception != null)
                                 {
-                                    ReportExceptionMessageProcessingRequest(r, callback);
+                                    SetErrorResponse(callback, r.Exception);
                                     return null;
                                 }
                                 if (r.Result.HasAnnotation<HttpStatusCode>())
@@ -199,7 +219,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                         {
                             if (r.Exception != null)
                             {
-                                ReportExceptionMessageProcessingRequest(r, callback);
+                                SetErrorResponse(callback, r.Exception);
                                 return null;
                             }
                             if (r.Result.HasAnnotation<HttpStatusCode>())
@@ -235,7 +255,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                         {
                             if (r.Exception != null)
                             {
-                                ReportExceptionMessageProcessingRequest(r, callback);
+                                SetErrorResponse(callback, r.Exception);
                                 return null;
                             }
                             if (r.Result.HasAnnotation<HttpStatusCode>())
@@ -334,40 +354,50 @@ namespace Hl7.Fhir.SmartAppLaunch
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Generic Exception: {ex.Message}");
-                base.StatusCode = (int)HttpStatusCode.InternalServerError;
-                OperationOutcome outcome = new OperationOutcome();
-                outcome.Issue.Add(new OperationOutcome.IssueComponent()
-                {
-                    Severity = OperationOutcome.IssueSeverity.Fatal,
-                    Code = OperationOutcome.IssueType.Exception,
-                    Details = new CodeableConcept() { Text = ex.Message }
-                });
-                base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(outcome));
-                base.MimeType = "application/fhir+json";
-
-                callback.Continue();
+                SetErrorResponse(callback, ex);
                 return CefReturnValue.Continue;
             }
         }
 
-        private void ReportExceptionMessageProcessingRequest(System.Threading.Tasks.Task r, ICallback callback)
+        private void SetErrorResponse(ICallback callback, Exception ex)
         {
-            System.Diagnostics.Trace.WriteLine($"Error: {r.Exception.Message}");
-            if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
-            {
-                base.StatusCode = (int)fe.Status;
-                if (fe.Outcome != null)
-                {
-                    base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(fe.Outcome));
-                    base.MimeType = "application/fhir+json";
-                }
-                System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
-            }
-            else
-            {
+            System.Diagnostics.Trace.WriteLine($"Error: {ex.Message}");
+            base.Headers.Add("Cache-Control", "no-store");
+            base.Headers.Add("Pragma", "no-cache");
 
+            OperationOutcome result = new OperationOutcome();
+            HttpStatusCode? status = null;
+            // process the exception (and all it's inner exceptions
+            while (ex != null)
+            {
+                if (ex is Hl7.Fhir.Rest.FhirOperationException fe)
+                {
+                    if (!status.HasValue)
+                        status = fe.Status;
+                    if (fe.Outcome != null)
+                    {
+                        result.Issue.AddRange(fe.Outcome.Issue);
+                    }
+                }
+                else
+                {
+                    result.Issue.Add(new OperationOutcome.IssueComponent()
+                    {
+                        Severity = OperationOutcome.IssueSeverity.Fatal,
+                        Code = OperationOutcome.IssueType.Exception,
+                        Details = new CodeableConcept() { Text = ex.Message }
+                    });
+                }
+                ex = ex.InnerException;
             }
+
+            base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(result));
+            base.MimeType = "application/fhir+json";
+            if (status.HasValue)
+                base.StatusCode = (int)status.Value;
+            else
+                base.StatusCode = (int)HttpStatusCode.InternalServerError;
+
             if (!callback.IsDisposed)
                 callback.Continue();
         }
