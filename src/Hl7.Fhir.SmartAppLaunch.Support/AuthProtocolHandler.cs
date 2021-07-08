@@ -147,59 +147,48 @@ namespace Hl7.Fhir.SmartAppLaunch
 
         private CefReturnValue ProcessTokenRequest(IRequest request, ICallback callback)
         {
-            // validate the token
-            if (request.PostData != null)
+            // Process the posted body content as form-url-encoded content
+            if (request.PostData == null || request.Method != "POST")
             {
-                var data = request.PostData.Elements.FirstOrDefault();
-                var body = data.GetBody();
-                var keyValuePairs = body.Split('&').Select(p => { var pair = p.Split('='); return new KeyValuePair<string, string>(pair[0], Uri.UnescapeDataString(pair[1])); }).ToList();
-                foreach (var item in keyValuePairs)
-                {
-                    Console.WriteLine($"Token: {item.Key} = {item.Value}");
-                }
-
-                string code = keyValuePairs.FirstOrDefault(k => k.Key == "code").Value;
-                string grant_type = keyValuePairs.FirstOrDefault(k => k.Key == "grant_type").Value;
-                if (code != _context.Code || grant_type != "authorization_code")
-                {
-                    base.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
-                    TokenResponse responseTokenError = new TokenResponse()
-                    {
-                        error_description = "Invalid Code or unsupported grant_type requested"
-                    };
-                    string jsonInvalidCode = JsonConvert.SerializeObject(responseTokenError);
-                    Console.WriteLine($"Token: {jsonInvalidCode}");
-                    base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(jsonInvalidCode));
-                    base.Headers.Add("Cache-Control", "no-store");
-                    base.Headers.Add("Pragma", "no-cache");
-                    base.MimeType = "application/json;charset=UTF-8";
-
-                    callback.Continue();
-                    return CefReturnValue.Continue;
-                }
-
-                string redirect_uri = keyValuePairs.FirstOrDefault(k => k.Key == "redirect_uri").Value;
-                if (_app.redirect_uri?.Any() == true && !_app.redirect_uri.Contains(redirect_uri))
-                {
-                    base.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
-                    TokenResponse responseTokenError = new TokenResponse()
-                    {
-                        error_description = "Invalid redirect_uri provided"
-                    };
-                    string jsonInvalidCode = JsonConvert.SerializeObject(responseTokenError);
-                    Console.WriteLine($"Token: {jsonInvalidCode}");
-                    base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(jsonInvalidCode));
-                    base.Headers.Add("Cache-Control", "no-store");
-                    base.Headers.Add("Pragma", "no-cache");
-                    base.MimeType = "application/json;charset=UTF-8";
-
-                    callback.Continue();
-                    return CefReturnValue.Continue;
-                }
+                // wrong request type, so just reject without checking anything further
+                SetErrorResponse(callback, System.Net.HttpStatusCode.BadRequest, "Invalid Token request - no post data");
+                return CefReturnValue.Continue;
             }
 
-            // TODO: additional validation
-            // ...
+            var data = request.PostData.Elements.FirstOrDefault();
+            var body = data?.GetBody();
+            var keyValuePairs = body?.Split('&').Select(p => { var pair = p.Split('='); return new KeyValuePair<string, string>(pair[0], Uri.UnescapeDataString(pair[1])); }).ToList();
+            foreach (var item in keyValuePairs)
+            {
+                Console.WriteLine($"Token: {item.Key} = {item.Value}");
+            }
+
+            string code = keyValuePairs.FirstOrDefault(k => k.Key == "code").Value;
+            string grant_type = keyValuePairs.FirstOrDefault(k => k.Key == "grant_type").Value;
+            if (code != _context.Code || grant_type != "authorization_code")
+            {
+                SetErrorResponse(callback, System.Net.HttpStatusCode.BadRequest, "Invalid Code or unsupported grant_type requested");
+                return CefReturnValue.Continue;
+            }
+
+            // Public Clients (no secret) need to provide the Client ID along with the token request
+            // TODO: uncomment this out when have implemented more of the SMART v2 profiles
+            //if (string.IsNullOrEmpty(_app.ClientSecret))
+            //{
+            //    string client_id = keyValuePairs.FirstOrDefault(k => k.Key == "client_id").Value;
+            //    if (string.IsNullOrEmpty(client_id) || _app.ClientID != client_id)
+            //    {
+            //        SetErrorResponse(callback, System.Net.HttpStatusCode.BadRequest, "Invalid or missing Client ID");
+            //        return CefReturnValue.Continue;
+            //    }
+            //}
+
+            string redirect_uri = keyValuePairs.FirstOrDefault(k => k.Key == "redirect_uri").Value;
+            if (_app.redirect_uri?.Any() == true && !_app.redirect_uri.Contains(redirect_uri))
+            {
+                SetErrorResponse(callback, System.Net.HttpStatusCode.BadRequest, "Invalid redirect_uri provided");
+                return CefReturnValue.Continue;
+            }
 
             // Grab the id_token if it's required
             string id_token = null;
@@ -239,6 +228,29 @@ namespace Hl7.Fhir.SmartAppLaunch
 
             callback.Continue();
             return CefReturnValue.Continue;
+        }
+
+        /// <summary>
+        /// Write the error message as a JSON TokenResponse
+        /// </summary>
+        /// <param name="callback"></param>
+        /// <param name="status"></param>
+        /// <param name="error_description"></param>
+        private void SetErrorResponse(ICallback callback, System.Net.HttpStatusCode status, string error_description)
+        {
+            base.StatusCode = (int)status;
+            TokenResponse responseTokenError = new TokenResponse()
+            {
+                error_description = error_description
+            };
+            string jsonInvalidCode = JsonConvert.SerializeObject(responseTokenError);
+            Console.WriteLine($"Token: {jsonInvalidCode}");
+            base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(jsonInvalidCode));
+            base.Headers.Add("Cache-Control", "no-store");
+            base.Headers.Add("Pragma", "no-cache");
+            base.MimeType = "application/json;charset=UTF-8";
+
+            callback.Continue();
         }
 
         public string FilterScopes(string requestedScopes, string[] supportedScopes)
