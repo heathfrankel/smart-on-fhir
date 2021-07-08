@@ -64,5 +64,13 @@ namespace Hl7.Fhir.SmartAppLaunch
         /// The library has some special handling for patient, encounter, episodeofcare, practitioner, practitionerrole and organization
         /// </remarks>
         IEnumerable<KeyValuePair<String, string>> ContextProperties { get; }
+
+        /// <summary>
+        /// A Security Principal based on the current logged in user (set by the PMS)
+        /// </summary>
+        /// <remarks>
+        /// If this is a ClaimsPrincipal, the Auth Protocol Handler will add claims based on scope processing
+        /// </remarks>
+        System.Security.Principal.IPrincipal Principal { get; }
     }
 }

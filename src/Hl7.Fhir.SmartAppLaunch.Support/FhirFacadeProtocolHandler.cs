@@ -91,82 +91,19 @@ namespace Hl7.Fhir.SmartAppLaunch
 
             try
             {
-                // This is a regular request
+                // This is a regular FHIR request
 
                 var headers = new List<KeyValuePair<string, IEnumerable<string>>>();
-                ModelBaseInputs<IServiceProvider> requestDetails = new ModelBaseInputs<IServiceProvider>(null, null, request.Method, uri, new Uri($"https://{AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_launchContext)}"), null, headers, null);
+                ModelBaseInputs<IServiceProvider> requestDetails = new ModelBaseInputs<IServiceProvider>(_launchContext.Principal, null, request.Method, uri, new Uri($"https://{AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_launchContext)}"), null, headers, null);
                 if (request.Method == "GET")
                 {
                     if (uri.LocalPath == "/.well-known/smart-configuration")
                     {
-                        base.StatusCode = (int)HttpStatusCode.OK;
-
-                        // http://build.fhir.org/ig/HL7/smart-app-launch/conformance.html
-                        FhirSmartAppLaunchConfiguration smart_config = new FhirSmartAppLaunchConfiguration();
-                        // populate the context based on the data we know
-                        smart_config.issuer = _app.Issuer;
-                        smart_config.authorization_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize";
-                        smart_config.token_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token";
-                        smart_config.scopes_supported = _app.AllowedScopes;
-                        smart_config.response_types_supported = new[] { "code", "code id_token" };
-                        var capabilities = new List<string> { "launch-ehr", "permission-v2", "context-ehr-patient", "authorize-post" };
-                        if (String.IsNullOrEmpty(_app.ClientSecret))
-                            capabilities.Add("client-public");
-                        else
-                            capabilities.Add("client-confidential-symmetric");
-                        smart_config.capabilities = capabilities;
-
-                        var jsonSettings = new Newtonsoft.Json.JsonSerializerSettings() { NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore };
-                        base.Stream = new MemoryStream();
-                        StreamWriter sw = new StreamWriter(base.Stream, System.Text.Encoding.UTF8, 4096, true);
-                        sw.Write(Newtonsoft.Json.JsonConvert.SerializeObject(smart_config, settings: jsonSettings));
-                        sw.Flush();
-                        base.Headers.Add("Cache-Control", "no-store");
-                        base.Headers.Add("Pragma", "no-cache");
-                        base.MimeType = "application/json;charset=UTF-8";
-
-                        Console.WriteLine($"Success: {base.Stream.Length}");
-                        callback.Continue();
-                        return CefReturnValue.Continue;
+                        return ProcessWellKnownSmartConfigurationRequest(callback);
                     }
                     if (uri.LocalPath == "/metadata")
                     {
-                        System.Threading.Tasks.Task.Run(() => _facade.GetConformance(requestDetails, Rest.SummaryType.False).ContinueWith<CapabilityStatement>(r =>
-                        {
-                            if (r.Exception != null)
-                            {
-                                SetErrorResponse(callback, r.Exception);
-                                return null;
-                            }
-                            base.StatusCode = (int)HttpStatusCode.OK;
-
-                            // As per the documentation http://hl7.org/fhir/smart-app-launch/conformance/index.html
-                            CapabilityStatement cs = r.Result;
-
-                            // Update the security node with our internal security node
-                            if (cs.Rest[0].Security == null)
-                                cs.Rest[0].Security = new Hl7.Fhir.Model.CapabilityStatement.SecurityComponent();
-                            Hl7.Fhir.Model.CapabilityStatement.SecurityComponent security = cs.Rest[0].Security;
-                            if (!security.Service.Any(cc => cc.Coding.Any(c => c.System == "http://hl7.org/fhir/restful-security-service" && c.Code == "SMART-on-FHIR")))
-                                security.Service.Add(new Hl7.Fhir.Model.CodeableConcept("http://hl7.org/fhir/restful-security-service", "SMART-on-FHIR"));
-                            var extension = security.GetExtension("http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris");
-                            if (extension == null)
-                            {
-                                extension = new Extension() { Url = "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris" };
-                                security.Extension.Add(extension);
-                            }
-                            // remove the existing authentications, and put in our own
-                            extension.Extension.Clear();
-                            extension.AddExtension("token", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token"));
-                            extension.AddExtension("authorize", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize"));
-
-                            base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
-                            Console.WriteLine($"Success: {base.Stream.Length}");
-                            base.MimeType = "application/fhir+json";
-                            callback.Continue();
-                            return r.Result;
-                        }));
-                        return CefReturnValue.ContinueAsync;
+                        return ProcessFhirMetadataRequest(callback, requestDetails);
                     }
 
                     if (!uri.LocalPath.StartsWith("/$") && !uri.LocalPath.StartsWith("/_") && uri.LocalPath.Length > 2)
@@ -179,7 +116,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                         if (rs == null)
                         {
                             System.Diagnostics.Trace.WriteLine($"Error: resource type not handled {resourceType}");
-                            base.StatusCode = (int)HttpStatusCode.BadRequest;
+                            base.StatusCode = (int)HttpStatusCode.NotFound;
                             //    base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(fe.Outcome));
                             //    base.MimeType = "application/fhir+json";
                             callback.Continue();
@@ -357,6 +294,79 @@ namespace Hl7.Fhir.SmartAppLaunch
                 SetErrorResponse(callback, ex);
                 return CefReturnValue.Continue;
             }
+        }
+
+        private CefReturnValue ProcessFhirMetadataRequest(ICallback callback, ModelBaseInputs<IServiceProvider> requestDetails)
+        {
+            System.Threading.Tasks.Task.Run(() => _facade.GetConformance(requestDetails, Rest.SummaryType.False).ContinueWith<CapabilityStatement>(r =>
+            {
+                if (r.Exception != null)
+                {
+                    SetErrorResponse(callback, r.Exception);
+                    return null;
+                }
+                base.StatusCode = (int)HttpStatusCode.OK;
+
+                // As per the documentation http://hl7.org/fhir/smart-app-launch/conformance/index.html
+                CapabilityStatement cs = r.Result;
+
+                // Update the security node with our internal security node
+                if (cs.Rest[0].Security == null)
+                    cs.Rest[0].Security = new Hl7.Fhir.Model.CapabilityStatement.SecurityComponent();
+                Hl7.Fhir.Model.CapabilityStatement.SecurityComponent security = cs.Rest[0].Security;
+                if (!security.Service.Any(cc => cc.Coding.Any(c => c.System == "http://hl7.org/fhir/restful-security-service" && c.Code == "SMART-on-FHIR")))
+                    security.Service.Add(new Hl7.Fhir.Model.CodeableConcept("http://hl7.org/fhir/restful-security-service", "SMART-on-FHIR"));
+                var extension = security.GetExtension("http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris");
+                if (extension == null)
+                {
+                    extension = new Extension() { Url = "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris" };
+                    security.Extension.Add(extension);
+                }
+                // remove the existing authentications, and put in our own
+                extension.Extension.Clear();
+                extension.AddExtension("token", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token"));
+                extension.AddExtension("authorize", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize"));
+
+                base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
+                Console.WriteLine($"Success: {base.Stream.Length}");
+                base.MimeType = "application/fhir+json";
+                callback.Continue();
+                return r.Result;
+            }));
+            return CefReturnValue.ContinueAsync;
+        }
+
+        private CefReturnValue ProcessWellKnownSmartConfigurationRequest(ICallback callback)
+        {
+            base.StatusCode = (int)HttpStatusCode.OK;
+
+            // http://build.fhir.org/ig/HL7/smart-app-launch/conformance.html
+            FhirSmartAppLaunchConfiguration smart_config = new FhirSmartAppLaunchConfiguration();
+            // populate the context based on the data we know
+            smart_config.issuer = _app.Issuer;
+            smart_config.authorization_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize";
+            smart_config.token_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token";
+            smart_config.scopes_supported = _app.AllowedScopes;
+            smart_config.response_types_supported = new[] { "code", "code id_token" };
+            var capabilities = new List<string> { "launch-ehr", "permission-v2", "context-ehr-patient", "authorize-post" };
+            if (String.IsNullOrEmpty(_app.ClientSecret))
+                capabilities.Add("client-public");
+            else
+                capabilities.Add("client-confidential-symmetric");
+            smart_config.capabilities = capabilities;
+
+            var jsonSettings = new Newtonsoft.Json.JsonSerializerSettings() { NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore };
+            base.Stream = new MemoryStream();
+            StreamWriter sw = new StreamWriter(base.Stream, System.Text.Encoding.UTF8, 4096, true);
+            sw.Write(Newtonsoft.Json.JsonConvert.SerializeObject(smart_config, settings: jsonSettings));
+            sw.Flush();
+            base.Headers.Add("Cache-Control", "no-store");
+            base.Headers.Add("Pragma", "no-cache");
+            base.MimeType = "application/json;charset=UTF-8";
+
+            Console.WriteLine($"Success: {base.Stream.Length}");
+            callback.Continue();
+            return CefReturnValue.Continue;
         }
 
         private void SetErrorResponse(ICallback callback, Exception ex)

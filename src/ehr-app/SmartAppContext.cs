@@ -12,6 +12,7 @@ namespace EHRApp
         public string Bearer { get; set; }
         public string Scopes { get; set; }
         public DateTimeOffset ExpiresAt { get; set; }
+        public System.Security.Principal.IPrincipal Principal { get; }
 
         public List<KeyValuePair<string, string>> ContextProperties { get; } = new List<KeyValuePair<string, string>>();
         IEnumerable<KeyValuePair<string, string>> IFhirSmartAppContext.ContextProperties => ContextProperties;
