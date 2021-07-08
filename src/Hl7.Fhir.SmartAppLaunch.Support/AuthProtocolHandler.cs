@@ -61,57 +61,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                 // Request for the identity server queries (token/authorize)
                 if (uri.LocalPath == "/authorize")
                 {
-                    // validate the client request data
-                    var keyValuePairs = uri.Query.Split('&').Select(p => { var pair = p.Split('='); return new KeyValuePair<string, string>(pair[0], Uri.UnescapeDataString(pair[1])); }).ToList();
-                    foreach (var item in keyValuePairs)
-                    {
-                        Console.WriteLine($"Authorize: {item.Key} = {item.Value}");
-                    }
-                    string redirectUri = keyValuePairs.FirstOrDefault(k => k.Key == "redirect_uri").Value;
-                    string state = keyValuePairs.FirstOrDefault(k => k.Key == "state").Value;
-                    string clientId = keyValuePairs.FirstOrDefault(k => k.Key == "client_id").Value;
-                    string clientSecret = keyValuePairs.FirstOrDefault(k => k.Key == "client_secret").Value;
-                    string requestedScopes = keyValuePairs.FirstOrDefault(k => k.Key == "scope").Value;
-
-                    // TODO: Validate the redirect URL, client ID, secret (and possibly the referrer value)
-                    if (clientId != _app.ClientID || clientSecret != _app.ClientSecret)
-                    {
-                        base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
-                        // replace this with some Razor content
-                        base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes("<HTML><body>Client ID or Secret bad</body></HTML>"));
-                        base.Headers.Add("Cache-Control", "no-store");
-                        base.Headers.Add("Pragma", "no-cache");
-                        base.MimeType = "text/html;charset=UTF-8";
-
-                        callback.Continue();
-                        return CefReturnValue.Continue;
-                    }
-
-                    if (_app.redirect_uri?.Any() == true && !_app.redirect_uri.Contains(redirectUri))
-                    {
-                        base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
-                        // replace this with some Razor content
-                        base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes("<HTML><body>Bad Redirect URL provided</body></HTML>"));
-                        base.Headers.Add("Cache-Control", "no-store");
-                        base.Headers.Add("Pragma", "no-cache");
-                        base.MimeType = "text/html;charset=UTF-8";
-
-                        callback.Continue();
-                        return CefReturnValue.Continue;
-                    }
-
-                    // Check the scopes
-                    _context.Scopes = requestedScopes;
-
-                    // This client (application) is authorized to connect to the system, and we have a logged in user in the system
-                    _context.Code = Guid.NewGuid().ToFhirId();
-                    _context.ExpiresAt = DateTimeOffset.Now.AddMinutes(2); // This only lives for a very short time (not that it really matters in process where you can't get in anyway)
-                    base.StatusCode = (int)System.Net.HttpStatusCode.Redirect;
-                    base.Headers.Remove("Location");
-                    base.Headers.Add("Location", $"{redirectUri}?code={_context.Code}&state={state}");
-
-                    callback.Continue();
-                    return CefReturnValue.Continue;
+                    return ProcessAuthorizeRequest(callback, uri);
                 }
 
                 if (uri.LocalPath == "/token")
@@ -214,14 +164,124 @@ namespace Hl7.Fhir.SmartAppLaunch
                 // TODO: Process any Auth pages
 
                 // Otherwise its a big no.
+                base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
                 callback.Cancel();
                 return CefReturnValue.Cancel;
             }
             catch (Exception ex)
             {
-                callback.Dispose();
+                base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
+                callback.Cancel();
                 return CefReturnValue.Cancel;
             }
+        }
+
+        private CefReturnValue ProcessAuthorizeRequest(ICallback callback, Uri uri)
+        {
+            // validate the client request data
+            var keyValuePairs = uri.Query.Split('&').Select(p => { var pair = p.Split('='); return new KeyValuePair<string, string>(pair[0], Uri.UnescapeDataString(pair[1])); }).ToList();
+            foreach (var item in keyValuePairs)
+            {
+                Console.WriteLine($"Authorize: {item.Key} = {item.Value}");
+            }
+            string redirectUri = keyValuePairs.FirstOrDefault(k => k.Key == "redirect_uri").Value;
+            string state = keyValuePairs.FirstOrDefault(k => k.Key == "state").Value;
+            string clientId = keyValuePairs.FirstOrDefault(k => k.Key == "client_id").Value;
+            string clientSecret = keyValuePairs.FirstOrDefault(k => k.Key == "client_secret").Value;
+            string requestedScopes = keyValuePairs.FirstOrDefault(k => k.Key == "scope").Value;
+
+            // Validate the Client ID and Client Secret
+            if (clientId != _app.ClientID || clientSecret != _app.ClientSecret)
+            {
+                base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
+                // replace this with some Razor content
+                base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes("<HTML><body>Client ID or Secret invalid</body></HTML>"));
+                base.Headers.Add("Cache-Control", "no-store");
+                base.Headers.Add("Pragma", "no-cache");
+                base.MimeType = "text/html;charset=UTF-8";
+
+                callback.Continue();
+                return CefReturnValue.Continue;
+            }
+
+            // Validate the redirect URL against the app's configured redirect URIs
+            if (_app.redirect_uri?.Any() == true && !_app.redirect_uri.Contains(redirectUri))
+            {
+                base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
+                // replace this with some Razor content
+                base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes("<HTML><body>Invalid Redirect URL provided</body></HTML>"));
+                base.Headers.Add("Cache-Control", "no-store");
+                base.Headers.Add("Pragma", "no-cache");
+                base.MimeType = "text/html;charset=UTF-8";
+
+                callback.Continue();
+                return CefReturnValue.Continue;
+            }
+
+            // Check the scopes are supported
+            _context.Scopes = FilterScopes(requestedScopes, _app.AllowedScopes);
+
+            // TODO: (and possibly the referrer value)
+
+            // This client (application) is authorized to connect to the system, and we have a logged in user in the system (as you've come in from our browser)
+            _context.Code = Guid.NewGuid().ToFhirId();
+            _context.ExpiresAt = DateTimeOffset.Now.AddMinutes(2); // This only lives for a very short time (not that it really matters in process where you can't get in anyway)
+            base.StatusCode = (int)System.Net.HttpStatusCode.Redirect;
+            base.Headers.Remove("Location");
+            base.Headers.Add("Location", $"{redirectUri}?code={_context.Code}&state={state}");
+
+            callback.Continue();
+            return CefReturnValue.Continue;
+        }
+
+        public string FilterScopes(string requestedScopes, string[] supportedScopes)
+        {
+            if (supportedScopes == null)
+                return requestedScopes;
+            List<string> resultScopes = new List<string>();
+            foreach (var scope in requestedScopes.Split(' '))
+            {
+                foreach (var supportedScopeFormat in supportedScopes)
+                {
+                    if (MatchesScope(scope, supportedScopeFormat))
+                    {
+                        resultScopes.Add(scope);
+                        // move to the next scope (templates are permissive)
+                        break;
+                    }
+                }
+            }
+            return string.Join(" ", resultScopes);
+        }
+
+        /// <summary>
+        /// Check the scope against the FHIR App Launch scope permission grammar
+        /// and also convert any v1 scopes into v2 scopes if required
+        /// (as well as explicit matches)
+        /// http://build.fhir.org/ig/HL7/smart-app-launch/scopes-and-launch-context.html#clinical-scope-syntax
+        /// </summary>
+        /// <param name="scope"></param>
+        /// <param name="supportedScopeFormat"></param>
+        /// <returns></returns>
+        /// <remarks>
+        /// The old v1 format is defined here (till the CI build/v2 is published)
+        /// http://hl7.org/fhir/smart-app-launch/scopes-and-launch-context/index.html#clinical-scope-syntax
+        /// </remarks>
+        public bool MatchesScope(string scope, string supportedScopeFormat)
+        {
+            // exact match of scope format
+            if (scope == supportedScopeFormat)
+                return true;
+
+            // check for user wildcard formats
+            if (supportedScopeFormat == "user/*.*" && (scope.StartsWith("user/") || scope.StartsWith("patient/")))
+                return true;
+
+            // check for patient wildcard formats
+            if (supportedScopeFormat == "patient/*.*" && scope.StartsWith("patient/"))
+                return true;
+
+            return false;
         }
     }
 }
