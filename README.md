@@ -49,3 +49,9 @@ Legacy EHR App
 ## Useful External references 
 
 (CORS AuthProtocolHandler/SmartApplicationDetails) https://docs.microsoft.com/en-us/aspnet/core/fundamentals/servers/kestrel?view=aspnetcore-3.1#host-filtering
+
+cefsharp documentation
+https://github.com/cefsharp/CefSharp/wiki/General-Usage#handlers
+
+Test Launch the Smart Forms test client
+https://launch.smarthealthit.org/?auth_error=&fhir_version_1=r4&fhir_version_2=r4&iss=&launch_ehr=1&launch_url=https%3A%2F%2Fsmartqedit4.azurewebsites.net%2Fsmart-launch.html&patient=fc200fa2-12c9-4276-ba4a-e0601d424e55&prov_skip_auth=1&prov_skip_login=1&provider=a6ba35b7-22d7-4bea-b87b-afbc9ff2f2ee&pt_skip_auth=1&public_key=&sb=&sde=&sim_ehr=1&token_lifetime=15&user_pt=

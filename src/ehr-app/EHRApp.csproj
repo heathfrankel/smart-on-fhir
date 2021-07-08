@@ -250,7 +250,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CefSharp.WinForms">
-      <Version>89.0.170</Version>
+      <Version>91.1.211</Version>
     </PackageReference>
     <PackageReference Include="ComCare.FhirServer.Models" Version="1.0.2" />
     <PackageReference Include="Hl7.Fhir.R4">
