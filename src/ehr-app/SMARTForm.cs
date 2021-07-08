@@ -96,14 +96,21 @@ namespace EHRApp
                 providerNo = (_context as SmartAppContext).MedicareProviderNumber,
                 isDelegate = "N",
                 roles = new[] { "Practitioner", "PracticeManager" },
-                pmsver = "Example EHR v1.34"
+                pmsver = "Example EHR v1.34",
+                practitioner = _context.ContextProperties.FirstOrDefault(cp => cp.Key == "practitioner").Value,
+                practitionerrole = _context.ContextProperties.FirstOrDefault(cp => cp.Key == "practitionerrole").Value,
+                organization = _context.ContextProperties.FirstOrDefault(cp => cp.Key == "organization").Value
             };
 
             // Provide the NASH Digital Certificate (with Private Key)
             X509Certificate2 cert = GetNashCertificate();
 
+            var extraHeaders = new System.Collections.Generic.Dictionary<string, object>();
+            extraHeaders.Add("typ", "JWT");
+            extraHeaders.Add("x5c", GetNashPublicKeyChain(cert));
+
             // Now generate the Identity Token
-            string token = Jose.JWT.Encode(payload, cert.GetRSAPrivateKey(), Jose.JwsAlgorithm.RS256);
+            string token = Jose.JWT.Encode(payload, cert.GetRSAPrivateKey(), Jose.JwsAlgorithm.RS256, extraHeaders);
             return token;
         }
 
@@ -112,6 +119,23 @@ namespace EHRApp
             // This could be replaced with reading from the Certificate Store, or some other mechanism
             // TODO: retrieve your NASH certificate
             return null;
+        }
+
+        public static string[] GetNashPublicKeyChain(X509Certificate2 cert)
+        {
+            var certBytes = cert.Export(X509ContentType.Cert);
+            var certPublic = new X509Certificate2(certBytes);
+            return new[] { Convert.ToBase64String(certPublic.GetRawCertData()) };
+
+            //X509Chain chain = new X509Chain();
+            //chain.Build(certPublic);
+            //var keys = new System.Collections.Generic.List<string>();
+            //foreach (var element in chain.ChainElements)
+            //{
+            //    // encoded as per https://datatracker.ietf.org/doc/html/rfc7515#appendix-C
+            //    keys.Add(Convert.ToBase64String(element.Certificate.GetRawCertData()));// .TrimEnd('=').Replace('+', '-').Replace('/', '_'));
+            //}
+            //return keys.ToArray();
         }
 
         public static string GetNashPublicKey()
