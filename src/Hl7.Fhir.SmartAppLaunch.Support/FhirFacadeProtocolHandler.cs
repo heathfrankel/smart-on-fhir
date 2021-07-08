@@ -56,7 +56,7 @@ namespace Hl7.Fhir.SmartAppLaunch
         {
             if (request.Method == "OPTIONS")
             {
-                // This is the CORS request, and that's good
+                // This is the CORS request, and that's good as we do want to support CORS calls to our "facade"
                 base.StatusCode = 200;
                 // base.Headers.Add("Access-Control-Allow-Origin", "*");
                 base.Headers.Add("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
@@ -67,7 +67,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             var uri = new Uri(request.Url);
             Console.WriteLine($"-----------------\r\n{request.Url}");
 
-            // Check the bearer header
+            // Check the bearer header (as all calls to this API MUST be provided the bearer token, otherwise are straight rejected)
             if (!string.IsNullOrEmpty(_launchContext.Bearer))
             {
                 string bearer = request.GetHeaderByName("authorization");
@@ -82,18 +82,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             try
             {
                 // This is a regular request
-                Hl7.Fhir.Rest.FhirClient server = new Hl7.Fhir.Rest.FhirClient("http://localhost:4178");
-                server.OnAfterResponse += (sender, args) =>
-                {
-                    base.Charset = args.RawResponse.CharacterSet;
-                    foreach (string header in args.RawResponse.Headers.AllKeys)
-                    {
-                        base.Headers.Add(header, args.RawResponse.Headers[header]);
-                    }
-                };
-                server.PreferredFormat = Hl7.Fhir.Rest.ResourceFormat.Json;
-                string redirectedUrl = server.Endpoint.OriginalString.TrimEnd('/') + uri.PathAndQuery;
-                System.Diagnostics.Trace.WriteLine($"{redirectedUrl}");
+
                 var headers = new List<KeyValuePair<string, IEnumerable<string>>>();
                 ModelBaseInputs<IServiceProvider> requestDetails = new ModelBaseInputs<IServiceProvider>(null, null, request.Method, uri, new Uri($"https://{AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_launchContext)}"), null, headers, null);
                 if (request.Method == "GET")
@@ -101,7 +90,6 @@ namespace Hl7.Fhir.SmartAppLaunch
                     if (uri.LocalPath == "/.well-known/smart-configuration")
                     {
                         base.StatusCode = 200;
-                        base.MimeType = "application/json";
 
                         FhirSmartAppLaunchConfiguration smart_config = new FhirSmartAppLaunchConfiguration();
                         // populate the context based on the data we know
@@ -113,31 +101,22 @@ namespace Hl7.Fhir.SmartAppLaunch
                         StreamWriter sw = new StreamWriter(base.Stream, System.Text.Encoding.UTF8, 4096, true);
                         sw.Write(Newtonsoft.Json.JsonConvert.SerializeObject(smart_config, settings: jsonSettings));
                         sw.Flush();
+                        base.Headers.Add("Cache-Control", "no-store");
+                        base.Headers.Add("Pragma", "no-cache");
+                        base.MimeType = "application/json;charset=UTF-8";
 
                         Console.WriteLine($"Success: {base.Stream.Length}");
-                        base.MimeType = "application/fhir+json";
                         callback.Continue();
                         return CefReturnValue.Continue;
                     }
                     if (uri.LocalPath == "/metadata")
                     {
-                        _facade.GetConformance(requestDetails, Rest.SummaryType.False).ContinueWith<CapabilityStatement>(r => 
+                        System.Threading.Tasks.Task.Run(() => _facade.GetConformance(requestDetails, Rest.SummaryType.False).ContinueWith<CapabilityStatement>(r => 
                         {
                             if (r.Exception != null)
                             {
-                                System.Diagnostics.Trace.WriteLine($"Error: {r.Exception.Message}");
-                                if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
-                                {
-                                    base.StatusCode = (int)fe.Status;
-                                    if (fe.Outcome != null)
-                                    {
-                                        base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(fe.Outcome));
-                                        base.MimeType = "application/fhir+json";
-                                    }
-                                    callback.Continue();
-                                    System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
-                                    return null;
-                                }
+                                ReportExceptionMessageProcessingRequest(r, callback);
+                                return null;
                             }
                             base.StatusCode = 200;
 
@@ -166,7 +145,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                             base.MimeType = "application/fhir+json";
                             callback.Continue();
                             return r.Result;
-                        });
+                        }));
                         return CefReturnValue.ContinueAsync;
                     }
 
@@ -191,23 +170,12 @@ namespace Hl7.Fhir.SmartAppLaunch
                         ResourceIdentity ri = new ResourceIdentity(uri);
                         if (ri.IsRestResourceIdentity())
                         {
-                            rs.Get(ri.Id, ri.VersionId, SummaryType.False).ContinueWith(r =>
+                            System.Threading.Tasks.Task.Run(() => rs.Get(ri.Id, ri.VersionId, SummaryType.False).ContinueWith(r =>
                             {
                                 if (r.Exception != null)
                                 {
-                                    System.Diagnostics.Trace.WriteLine($"Error: {r.Exception.Message}");
-                                    if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
-                                    {
-                                        base.StatusCode = (int)fe.Status;
-                                        if (fe.Outcome != null)
-                                        {
-                                            base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(fe.Outcome));
-                                            base.MimeType = "application/fhir+json";
-                                        }
-                                        callback.Continue();
-                                        System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
-                                        return null;
-                                    }
+                                    ReportExceptionMessageProcessingRequest(r, callback);
+                                    return null;
                                 }
                                 if (r.Result.HasAnnotation<HttpStatusCode>())
                                     base.StatusCode = (int)r.Result.Annotation<HttpStatusCode>();
@@ -219,7 +187,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                                 base.MimeType = "application/fhir+json";
                                 callback.Continue();
                                 return r.Result;
-                            });
+                            }));
                             return CefReturnValue.ContinueAsync;
                         }
 
@@ -227,23 +195,12 @@ namespace Hl7.Fhir.SmartAppLaunch
                         var parameters = TupledParameters(uri, SearchQueryParameterNames);
                         int? pagesize = GetIntParameter(uri, FhirParameter.COUNT);
                         var summary = GetSummaryParameter(uri);
-                        rs.Search(parameters, pagesize, summary).ContinueWith(r =>
+                        System.Threading.Tasks.Task.Run(() => rs.Search(parameters, pagesize, summary).ContinueWith(r =>
                         {
                             if (r.Exception != null)
                             {
-                                System.Diagnostics.Trace.WriteLine($"Error: {r.Exception.Message}");
-                                if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
-                                {
-                                    base.StatusCode = (int)fe.Status;
-                                    if (fe.Outcome != null)
-                                    {
-                                        base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(fe.Outcome));
-                                        base.MimeType = "application/fhir+json";
-                                    }
-                                    callback.Continue();
-                                    System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
-                                    return null;
-                                }
+                                ReportExceptionMessageProcessingRequest(r, callback);
+                                return null;
                             }
                             if (r.Result.HasAnnotation<HttpStatusCode>())
                                 base.StatusCode = (int)r.Result.Annotation<HttpStatusCode>();
@@ -255,58 +212,9 @@ namespace Hl7.Fhir.SmartAppLaunch
                             base.MimeType = "application/fhir+json";
                             callback.Continue();
                             return r.Result;
-                        });
+                        }));
                         return CefReturnValue.ContinueAsync;
                     }
-
-                    System.Threading.Tasks.Task<Hl7.Fhir.Model.Resource> t = server.GetAsync(redirectedUrl).ContinueWith<Hl7.Fhir.Model.Resource>(r =>
-                    {
-                        if (r.Exception != null)
-                        {
-                            System.Diagnostics.Trace.WriteLine($"Error: {r.Exception.Message}");
-                            if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
-                            {
-                                base.StatusCode = (int)fe.Status;
-                                if (fe.Outcome != null)
-                                {
-                                    base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(fe.Outcome));
-                                    base.MimeType = "application/fhir+json";
-                                }
-                                callback.Continue();
-                                System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
-                                return null;
-                            }
-                        }
-                        base.StatusCode = 200;
-
-                        if (r.Result is Hl7.Fhir.Model.CapabilityStatement cs)
-                        {
-                            // As per the documentation http://hl7.org/fhir/smart-app-launch/conformance/index.html
-
-                            // Update the security node with our internal security node
-                            if (cs.Rest[0].Security == null)
-                                cs.Rest[0].Security = new Hl7.Fhir.Model.CapabilityStatement.SecurityComponent();
-                            Hl7.Fhir.Model.CapabilityStatement.SecurityComponent security = cs.Rest[0].Security;
-                            if (!security.Service.Any(cc => cc.Coding.Any(c => c.System == "http://hl7.org/fhir/restful-security-service" && c.Code == "SMART-on-FHIR")))
-                                security.Service.Add(new Hl7.Fhir.Model.CodeableConcept("http://hl7.org/fhir/restful-security-service", "SMART-on-FHIR"));
-                            var extension = security.GetExtension("http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris");
-                            if (extension == null)
-                            {
-                                extension = new Extension() { Url = "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris" };
-                                security.Extension.Add(extension);
-                            }
-                            // remove the existing authentications, and put in our own
-                            extension.Extension.Clear();
-                            extension.AddExtension("token", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token"));
-                            extension.AddExtension("authorize", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize"));
-                        }
-
-                        base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
-                        Console.WriteLine($"Success: {base.Stream.Length}");
-                        base.MimeType = "application/fhir+json";
-                        callback.Continue();
-                        return r.Result;
-                    });
                 }
                 if (request.Method == "POST")
                 {
@@ -323,23 +231,12 @@ namespace Hl7.Fhir.SmartAppLaunch
                                 b = new Hl7.Fhir.Serialization.FhirJsonParser().Parse<Bundle>(body);
                         }
 
-                        _facade.ProcessBatch(requestDetails, b).ContinueWith(r =>
+                        System.Threading.Tasks.Task.Run(() => _facade.ProcessBatch(requestDetails, b).ContinueWith(r =>
                         {
                             if (r.Exception != null)
                             {
-                                System.Diagnostics.Trace.WriteLine($"Error: {r.Exception.Message}");
-                                if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
-                                {
-                                    base.StatusCode = (int)fe.Status;
-                                    if (fe.Outcome != null)
-                                    {
-                                        base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(fe.Outcome));
-                                        base.MimeType = "application/fhir+json";
-                                    }
-                                    callback.Continue();
-                                    System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
-                                    return null;
-                                }
+                                ReportExceptionMessageProcessingRequest(r, callback);
+                                return null;
                             }
                             if (r.Result.HasAnnotation<HttpStatusCode>())
                                 base.StatusCode = (int)r.Result.Annotation<HttpStatusCode>();
@@ -351,102 +248,134 @@ namespace Hl7.Fhir.SmartAppLaunch
                             base.MimeType = "application/fhir+json";
                             callback.Continue();
                             return r.Result;
-                        });
+                        }));
                         return CefReturnValue.ContinueAsync;
                     }
 
-                    System.Net.Http.HttpClient client = new System.Net.Http.HttpClient();
-                    client.DefaultRequestHeaders.Add("Accept", request.GetHeaderByName("Accept"));
-                    // client.DefaultRequestHeaders.Add("Content-Type", request.GetHeaderByName("Content-Type"));
-                    HttpContent content = null;
-                    if (request.PostData != null)
-                    {
-                        var data = request.PostData.Elements.FirstOrDefault();
-                        var body = data.GetBody();
-                        content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, request.GetHeaderByName("Content-Type"));
-                    }
-                    else
-                    {
-                        content = new System.Net.Http.StreamContent(null);
-                    }
-                    client.PostAsync(redirectedUrl, content).ContinueWith((System.Threading.Tasks.Task<HttpResponseMessage> r) =>
-                    {
-                        if (r.Exception != null)
-                        {
-                            Console.WriteLine($"Error: {r.Exception.Message}");
-                            //if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
-                            //{
-                            //    base.StatusCode = (int)fe.Status;
-                            //    if (fe.Outcome != null)
-                            //        base.Stream = new MemoryStream(r.Result.Content.ReadAsStringAsync().GetAwaiter().GetResult());
-                            //    callback.Continue();
-                            //    System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
-                            //    return;
-                            //}
-                        }
-                        base.StatusCode = (int)r.Result.StatusCode;
+                    //System.Net.Http.HttpClient client = new System.Net.Http.HttpClient();
+                    //client.DefaultRequestHeaders.Add("Accept", request.GetHeaderByName("Accept"));
+                    //// client.DefaultRequestHeaders.Add("Content-Type", request.GetHeaderByName("Content-Type"));
+                    //HttpContent content = null;
+                    //if (request.PostData != null)
+                    //{
+                    //    var data = request.PostData.Elements.FirstOrDefault();
+                    //    var body = data.GetBody();
+                    //    content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, request.GetHeaderByName("Content-Type"));
+                    //}
+                    //else
+                    //{
+                    //    content = new System.Net.Http.StreamContent(null);
+                    //}
+                    //client.PostAsync(redirectedUrl, content).ContinueWith((System.Threading.Tasks.Task<HttpResponseMessage> r) =>
+                    //{
+                    //    if (r.Exception != null)
+                    //    {
+                    //        Console.WriteLine($"Error: {r.Exception.Message}");
+                    //        //if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
+                    //        //{
+                    //        //    base.StatusCode = (int)fe.Status;
+                    //        //    if (fe.Outcome != null)
+                    //        //        base.Stream = new MemoryStream(r.Result.Content.ReadAsStringAsync().GetAwaiter().GetResult());
+                    //        //    callback.Continue();
+                    //        //    System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
+                    //        //    return;
+                    //        //}
+                    //    }
+                    //    base.StatusCode = (int)r.Result.StatusCode;
 
-                        base.Stream = r.Result.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
-                        Console.WriteLine($"Success: {base.Stream.Length}");
-                        base.MimeType = r.Result.Content.Headers.ContentType.MediaType;
-                        callback.Continue();
-                        return;
-                    });
+                    //    base.Stream = r.Result.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+                    //    Console.WriteLine($"Success: {base.Stream.Length}");
+                    //    base.MimeType = r.Result.Content.Headers.ContentType.MediaType;
+                    //    callback.Continue();
+                    //    return;
+                    //});
                 }
                 if (request.Method == "PUT")
                 {
-                    System.Net.Http.HttpClient client = new System.Net.Http.HttpClient();
-                    client.DefaultRequestHeaders.Add("Accept", request.GetHeaderByName("Accept"));
-                    // client.DefaultRequestHeaders.Add("Content-Type", request.GetHeaderByName("Content-Type"));
-                    HttpContent content = null;
-                    if (request.PostData != null)
-                    {
-                        var data = request.PostData.Elements.FirstOrDefault();
-                        var body = data.GetBody();
-                        content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, request.GetHeaderByName("Content-Type"));
-                    }
-                    else
-                    {
-                        content = new System.Net.Http.StreamContent(null);
-                    }
-                    client.PutAsync(redirectedUrl, content).ContinueWith((System.Threading.Tasks.Task<HttpResponseMessage> r) =>
-                    {
-                        if (r.Exception != null)
-                        {
-                            Console.WriteLine($"Error: {r.Exception.Message}");
-                            //if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
-                            //{
-                            //    base.StatusCode = (int)fe.Status;
-                            //    if (fe.Outcome != null)
-                            //        base.Stream = new MemoryStream(r.Result.Content.ReadAsStringAsync().GetAwaiter().GetResult());
-                            //    callback.Continue();
-                            //    System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
-                            //    return;
-                            //}
-                        }
-                        base.StatusCode = (int)r.Result.StatusCode;
+                    //System.Net.Http.HttpClient client = new System.Net.Http.HttpClient();
+                    //client.DefaultRequestHeaders.Add("Accept", request.GetHeaderByName("Accept"));
+                    //// client.DefaultRequestHeaders.Add("Content-Type", request.GetHeaderByName("Content-Type"));
+                    //HttpContent content = null;
+                    //if (request.PostData != null)
+                    //{
+                    //    var data = request.PostData.Elements.FirstOrDefault();
+                    //    var body = data.GetBody();
+                    //    content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, request.GetHeaderByName("Content-Type"));
+                    //}
+                    //else
+                    //{
+                    //    content = new System.Net.Http.StreamContent(null);
+                    //}
+                    //client.PutAsync(redirectedUrl, content).ContinueWith((System.Threading.Tasks.Task<HttpResponseMessage> r) =>
+                    //{
+                    //    if (r.Exception != null)
+                    //    {
+                    //        Console.WriteLine($"Error: {r.Exception.Message}");
+                    //        //if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
+                    //        //{
+                    //        //    base.StatusCode = (int)fe.Status;
+                    //        //    if (fe.Outcome != null)
+                    //        //        base.Stream = new MemoryStream(r.Result.Content.ReadAsStringAsync().GetAwaiter().GetResult());
+                    //        //    callback.Continue();
+                    //        //    System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
+                    //        //    return;
+                    //        //}
+                    //    }
+                    //    base.StatusCode = (int)r.Result.StatusCode;
 
-                        base.Stream = r.Result.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
-                        Console.WriteLine($"Success: {base.Stream.Length}");
-                        base.MimeType = r.Result.Content.Headers.ContentType.MediaType;
-                        callback.Continue();
-                        return;
-                    });
+                    //    base.Stream = r.Result.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+                    //    Console.WriteLine($"Success: {base.Stream.Length}");
+                    //    base.MimeType = r.Result.Content.Headers.ContentType.MediaType;
+                    //    callback.Continue();
+                    //    return;
+                    //});
                 }
                 return CefReturnValue.ContinueAsync;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"{ex.Message}");
-                callback.Dispose();
-                return CefReturnValue.Cancel;
+                Console.WriteLine($"Generic Exception: {ex.Message}");
+                base.StatusCode = (int)HttpStatusCode.InternalServerError;
+                OperationOutcome outcome = new OperationOutcome();
+                outcome.Issue.Add(new OperationOutcome.IssueComponent()
+                {
+                    Severity = OperationOutcome.IssueSeverity.Fatal,
+                    Code = OperationOutcome.IssueType.Exception,
+                    Details = new CodeableConcept() { Text = ex.Message }
+                });
+                base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(outcome));
+                base.MimeType = "application/fhir+json";
+
+                callback.Continue();
+                return CefReturnValue.Continue;
             }
         }
 
+        private void ReportExceptionMessageProcessingRequest(System.Threading.Tasks.Task r, ICallback callback)
+        {
+            System.Diagnostics.Trace.WriteLine($"Error: {r.Exception.Message}");
+            if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
+            {
+                base.StatusCode = (int)fe.Status;
+                if (fe.Outcome != null)
+                {
+                    base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(fe.Outcome));
+                    base.MimeType = "application/fhir+json";
+                }
+                System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
+            }
+            else
+            {
+
+            }
+            if (!callback.IsDisposed)
+                callback.Continue();
+        }
+
         /// <summary>
-        /// Retrieve all the parameters from the Request
+        /// Retrieve all the parameters from a Request URL
         /// </summary>
-        /// <param name="request"></param>
+        /// <param name="requestUri"></param>
         /// <param name="excludeParameters">Do not include any parameters from the provided collection</param>
         /// <returns></returns>
         public static IEnumerable<KeyValuePair<string, string>> TupledParameters(Uri requestUri, string[] excludeParameters = null)
@@ -475,7 +404,7 @@ namespace Hl7.Fhir.SmartAppLaunch
 
             if (nvp.HasKeys())
             {
-                return nvp.GetValues(keyParam).FirstOrDefault();
+                return nvp.GetValues(keyParam)?.FirstOrDefault();
             }
             return null;
         }
