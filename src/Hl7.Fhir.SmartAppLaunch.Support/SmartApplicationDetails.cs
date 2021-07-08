@@ -48,7 +48,7 @@ namespace Hl7.Fhir.SmartAppLaunch
 
         /// <summary>
         /// This is the equivalent of the AllowedHosts for CORS processing for the internal FHIR Facade
-        /// https://docs.microsoft.com/en-us/aspnet/core/fundamentals/servers/kestrel?view=aspnetcore-3.1#host-filtering
+        /// <a href="https://docs.microsoft.com/en-us/aspnet/core/fundamentals/servers/kestrel?view=aspnetcore-3.1#host-filtering">https://docs.microsoft.com/en-us/aspnet/core/fundamentals/servers/kestrel?view=aspnetcore-3.1#host-filtering</a>
         /// This will serve to prevent hosts outside the domain of the smart app that somehow inject themselves into the site from having access to the data server
         /// </summary>
         public string AllowedHosts { get; set; }

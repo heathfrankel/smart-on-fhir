@@ -66,111 +66,22 @@ namespace Hl7.Fhir.SmartAppLaunch
 
                 if (uri.LocalPath == "/token")
                 {
-                    // validate the token
-                    if (request.PostData != null)
-                    {
-                        var data = request.PostData.Elements.FirstOrDefault();
-                        var body = data.GetBody();
-                        var keyValuePairs = body.Split('&').Select(p => { var pair = p.Split('='); return new KeyValuePair<string, string>(pair[0], Uri.UnescapeDataString(pair[1])); }).ToList();
-                        foreach (var item in keyValuePairs)
-                        {
-                            Console.WriteLine($"Token: {item.Key} = {item.Value}");
-                        }
-
-                        string code = keyValuePairs.FirstOrDefault(k => k.Key == "code").Value;
-                        string grant_type = keyValuePairs.FirstOrDefault(k => k.Key == "grant_type").Value;
-                        if (code != _context.Code || grant_type != "authorization_code")
-                        {
-                            base.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
-                            TokenResponse responseTokenError = new TokenResponse()
-                            {
-                                error_description = "Invalid Code or unsupported grant_type requested"
-                            };
-                            string jsonInvalidCode = JsonConvert.SerializeObject(responseTokenError);
-                            Console.WriteLine($"Token: {jsonInvalidCode}");
-                            base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(jsonInvalidCode));
-                            base.Headers.Add("Cache-Control", "no-store");
-                            base.Headers.Add("Pragma", "no-cache");
-                            base.MimeType = "application/json;charset=UTF-8";
-
-                            callback.Continue();
-                            return CefReturnValue.Continue;
-                        }
-
-                        string redirect_uri = keyValuePairs.FirstOrDefault(k => k.Key == "redirect_uri").Value;
-                        if (_app.redirect_uri?.Any() == true && !_app.redirect_uri.Contains(redirect_uri))
-                        {
-                            base.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
-                            TokenResponse responseTokenError = new TokenResponse()
-                            {
-                                error_description = "Invalid redirect_uri provided"
-                            };
-                            string jsonInvalidCode = JsonConvert.SerializeObject(responseTokenError);
-                            Console.WriteLine($"Token: {jsonInvalidCode}");
-                            base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(jsonInvalidCode));
-                            base.Headers.Add("Cache-Control", "no-store");
-                            base.Headers.Add("Pragma", "no-cache");
-                            base.MimeType = "application/json;charset=UTF-8";
-
-                            callback.Continue();
-                            return CefReturnValue.Continue;
-                        }
-                    }
-
-                    // TODO: additional validation
-                    // ...
-
-                    // Grab the id_token if it's required
-                    string id_token = null;
-                    if ((_context.Scopes.Contains("fhirUser") || _context.Scopes.Contains("profile")) && _context.Scopes.Contains("openid") && _getIdToken != null)
-                    {
-                        // Need to also include the id_token
-                        id_token = _getIdToken(_app, _context);
-                    }
-
-                    // All has been validated correctly, so we can return the token response
-                    _context.ExpiresAt = DateTimeOffset.Now.AddSeconds(3600);
-                    _context.Bearer = Guid.NewGuid().ToFhirId();
-                    TokenResponse responseToken = new TokenResponse()
-                    {
-                        access_token = _context.Bearer,
-                        id_token = id_token,
-                        token_type = "Bearer",
-                        expires_in = 3600,
-                        scope = _context.Scopes,
-                    };
-                    responseToken.patient = _context.ContextProperties.FirstOrDefault(p => p.Key == "patient").Value;
-                    responseToken.encounter = _context.ContextProperties.FirstOrDefault(p => p.Key == "encounter").Value;
-                    responseToken.episodeofcare = _context.ContextProperties.FirstOrDefault(p => p.Key == "episodeofcare").Value;
-
-                    responseToken.organization = _context.ContextProperties.FirstOrDefault(p => p.Key == "organization").Value;
-                    responseToken.practitioner = _context.ContextProperties.FirstOrDefault(p => p.Key == "practitioner").Value;
-                    responseToken.practitionerrole = _context.ContextProperties.FirstOrDefault(p => p.Key == "practitionerrole").Value;
-                    responseToken.nash_pub_cert = _context.ContextProperties.FirstOrDefault(p => p.Key == "X-NASH-Public-Cert").Value;
-
-                    base.StatusCode = (int)System.Net.HttpStatusCode.OK;
-                    string json = JsonConvert.SerializeObject(responseToken);
-                    Console.WriteLine($"Token: {json}");
-                    base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(json));
-                    base.Headers.Add("Cache-Control", "no-store");
-                    base.Headers.Add("Pragma", "no-cache");
-                    base.MimeType = "application/json;charset=UTF-8";
-
-                    callback.Continue();
-                    return CefReturnValue.Continue;
+                    return ProcessTokenRequest(request, callback);
                 }
 
                 // This is a regular request
-                // TODO: Process any Auth pages
+                // TODO: Process any Auth pages if required (where there are no user interactions, we can ignore this)
+                // 
 
-                // Otherwise its a big no.
-                base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
-                callback.Cancel();
-                return CefReturnValue.Cancel;
+                // --------------------------------------------------------------------
+                // This was not handled as any currently supported Auth operation, so its a big no, nothing found.
+                base.StatusCode = (int)System.Net.HttpStatusCode.NotFound;
+                callback.Continue();
+                return CefReturnValue.Continue;
             }
             catch (Exception ex)
             {
-                base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
+                base.StatusCode = (int)System.Net.HttpStatusCode.InternalServerError;
                 callback.Cancel();
                 return CefReturnValue.Cancel;
             }
@@ -221,7 +132,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             // Check the scopes are supported
             _context.Scopes = FilterScopes(requestedScopes, _app.AllowedScopes);
 
-            // TODO: (and possibly the referrer value)
+            // TODO: (and possibly the referrer value against the _apps.AllowedHosts)
 
             // This client (application) is authorized to connect to the system, and we have a logged in user in the system (as you've come in from our browser)
             _context.Code = Guid.NewGuid().ToFhirId();
@@ -229,6 +140,102 @@ namespace Hl7.Fhir.SmartAppLaunch
             base.StatusCode = (int)System.Net.HttpStatusCode.Redirect;
             base.Headers.Remove("Location");
             base.Headers.Add("Location", $"{redirectUri}?code={_context.Code}&state={state}");
+
+            callback.Continue();
+            return CefReturnValue.Continue;
+        }
+
+        private CefReturnValue ProcessTokenRequest(IRequest request, ICallback callback)
+        {
+            // validate the token
+            if (request.PostData != null)
+            {
+                var data = request.PostData.Elements.FirstOrDefault();
+                var body = data.GetBody();
+                var keyValuePairs = body.Split('&').Select(p => { var pair = p.Split('='); return new KeyValuePair<string, string>(pair[0], Uri.UnescapeDataString(pair[1])); }).ToList();
+                foreach (var item in keyValuePairs)
+                {
+                    Console.WriteLine($"Token: {item.Key} = {item.Value}");
+                }
+
+                string code = keyValuePairs.FirstOrDefault(k => k.Key == "code").Value;
+                string grant_type = keyValuePairs.FirstOrDefault(k => k.Key == "grant_type").Value;
+                if (code != _context.Code || grant_type != "authorization_code")
+                {
+                    base.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
+                    TokenResponse responseTokenError = new TokenResponse()
+                    {
+                        error_description = "Invalid Code or unsupported grant_type requested"
+                    };
+                    string jsonInvalidCode = JsonConvert.SerializeObject(responseTokenError);
+                    Console.WriteLine($"Token: {jsonInvalidCode}");
+                    base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(jsonInvalidCode));
+                    base.Headers.Add("Cache-Control", "no-store");
+                    base.Headers.Add("Pragma", "no-cache");
+                    base.MimeType = "application/json;charset=UTF-8";
+
+                    callback.Continue();
+                    return CefReturnValue.Continue;
+                }
+
+                string redirect_uri = keyValuePairs.FirstOrDefault(k => k.Key == "redirect_uri").Value;
+                if (_app.redirect_uri?.Any() == true && !_app.redirect_uri.Contains(redirect_uri))
+                {
+                    base.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
+                    TokenResponse responseTokenError = new TokenResponse()
+                    {
+                        error_description = "Invalid redirect_uri provided"
+                    };
+                    string jsonInvalidCode = JsonConvert.SerializeObject(responseTokenError);
+                    Console.WriteLine($"Token: {jsonInvalidCode}");
+                    base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(jsonInvalidCode));
+                    base.Headers.Add("Cache-Control", "no-store");
+                    base.Headers.Add("Pragma", "no-cache");
+                    base.MimeType = "application/json;charset=UTF-8";
+
+                    callback.Continue();
+                    return CefReturnValue.Continue;
+                }
+            }
+
+            // TODO: additional validation
+            // ...
+
+            // Grab the id_token if it's required
+            string id_token = null;
+            if ((_context.Scopes.Contains("fhirUser") || _context.Scopes.Contains("profile")) && _context.Scopes.Contains("openid") && _getIdToken != null)
+            {
+                // Need to also include the id_token
+                id_token = _getIdToken(_app, _context);
+            }
+
+            // All has been validated correctly, so we can return the token response
+            _context.ExpiresAt = DateTimeOffset.Now.AddSeconds(3600);
+            _context.Bearer = Guid.NewGuid().ToFhirId();
+            TokenResponse responseToken = new TokenResponse()
+            {
+                access_token = _context.Bearer,
+                id_token = id_token,
+                token_type = "Bearer",
+                expires_in = 3600,
+                scope = _context.Scopes,
+            };
+            responseToken.patient = _context.ContextProperties.FirstOrDefault(p => p.Key == "patient").Value;
+            responseToken.encounter = _context.ContextProperties.FirstOrDefault(p => p.Key == "encounter").Value;
+            responseToken.episodeofcare = _context.ContextProperties.FirstOrDefault(p => p.Key == "episodeofcare").Value;
+
+            responseToken.organization = _context.ContextProperties.FirstOrDefault(p => p.Key == "organization").Value;
+            responseToken.practitioner = _context.ContextProperties.FirstOrDefault(p => p.Key == "practitioner").Value;
+            responseToken.practitionerrole = _context.ContextProperties.FirstOrDefault(p => p.Key == "practitionerrole").Value;
+            responseToken.nash_pub_cert = _context.ContextProperties.FirstOrDefault(p => p.Key == "X-NASH-Public-Cert").Value;
+
+            base.StatusCode = (int)System.Net.HttpStatusCode.OK;
+            string json = JsonConvert.SerializeObject(responseToken);
+            Console.WriteLine($"Token: {json}");
+            base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes(json));
+            base.Headers.Add("Cache-Control", "no-store");
+            base.Headers.Add("Pragma", "no-cache");
+            base.MimeType = "application/json;charset=UTF-8";
 
             callback.Continue();
             return CefReturnValue.Continue;
