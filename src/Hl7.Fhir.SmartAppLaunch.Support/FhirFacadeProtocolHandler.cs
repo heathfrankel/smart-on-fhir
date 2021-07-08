@@ -83,17 +83,25 @@ namespace Hl7.Fhir.SmartAppLaunch
                 string bearer = request.GetHeaderByName("authorization");
                 if (bearer != "Bearer " + _launchContext.Bearer)
                 {
-                    base.StatusCode = (int)HttpStatusCode.Unauthorized;
-                    callback.Continue();
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "No Bearer token provided for this request");
                     return CefReturnValue.Continue;
                 }
             }
+            // TODO: Check that the session hasn't expired (not critical as the window is within the control of the PMS system)
+            //if (_launchContext.ExpiresAt < DateTimeOffset.Now) 
+            //{
+            //    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "Authorization has expired, please re-authorize");
+            //    return CefReturnValue.Continue;
+            //}
 
             try
             {
                 // This is a regular FHIR request
-
                 var headers = new List<KeyValuePair<string, IEnumerable<string>>>();
+                foreach (var key in request.Headers?.AllKeys)
+                {
+                    headers.Add(new KeyValuePair<string, IEnumerable<string>>(key, request.Headers.GetValues(key)));
+                }
                 ModelBaseInputs<IServiceProvider> requestDetails = new ModelBaseInputs<IServiceProvider>(_launchContext.Principal, null, request.Method, uri, new Uri($"https://{AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_launchContext)}"), null, headers, null);
                 if (request.Method == "GET")
                 {
@@ -101,7 +109,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                     {
                         return ProcessWellKnownSmartConfigurationRequest(callback);
                     }
-                    if (uri.LocalPath == "/metadata")
+                    if (uri.LocalPath == "/metadata" || uri.LocalPath == "/")
                     {
                         return ProcessFhirMetadataRequest(callback, requestDetails);
                     }
@@ -112,66 +120,60 @@ namespace Hl7.Fhir.SmartAppLaunch
                         string resourceType = uri.LocalPath.Substring(1);
                         if (resourceType.Contains("/"))
                             resourceType = resourceType.Substring(0, resourceType.IndexOf("/"));
-                        var rs = _facade.GetResourceService(requestDetails, resourceType);
-                        if (rs == null)
+                        if (!string.IsNullOrEmpty(resourceType))
                         {
-                            System.Diagnostics.Trace.WriteLine($"Error: resource type not handled {resourceType}");
-                            base.StatusCode = (int)HttpStatusCode.NotFound;
-                            //    base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(fe.Outcome));
-                            //    base.MimeType = "application/fhir+json";
-                            callback.Continue();
-                            return CefReturnValue.Continue;
-                        }
+                            var rs = _facade.GetResourceService(requestDetails, resourceType);
+                            if (rs == null)
+                            {
+                                SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, $"Resource type {resourceType} is not supported");
+                                return CefReturnValue.Continue;
+                            }
+                            // For queries that leverage the summary parameter (that's on the URL
+                            var summary = GetSummaryParameter(uri);
 
-                        // GET for a specific resource
-                        ResourceIdentity ri = new ResourceIdentity(uri);
-                        if (ri.IsRestResourceIdentity())
-                        {
-                            System.Threading.Tasks.Task.Run(() => rs.Get(ri.Id, ri.VersionId, SummaryType.False).ContinueWith(r =>
+                            // GET for a specific resource
+                            ResourceIdentity ri = new ResourceIdentity(uri);
+                            if (ri.IsRestResourceIdentity())
+                            {
+                                System.Threading.Tasks.Task.Run(() => rs.Get(ri.Id, ri.VersionId, summary).ContinueWith(r =>
+                                {
+                                    if (r.Exception != null)
+                                    {
+                                        SetErrorResponse(callback, r.Exception);
+                                        return null;
+                                    }
+                                    var statusCode = r.Result.HasAnnotation<HttpStatusCode>() ? r.Result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                                    SetResponse(callback, statusCode, r.Result);
+                                    return r.Result;
+                                }));
+                                return CefReturnValue.ContinueAsync;
+                            }
+
+                            // Search for the resource type
+                            var parameters = TupledParameters(uri, SearchQueryParameterNames);
+                            int? pagesize = GetIntParameter(uri, FhirParameter.COUNT);
+                            System.Threading.Tasks.Task.Run(() => rs.Search(parameters, pagesize, summary).ContinueWith(r =>
                             {
                                 if (r.Exception != null)
                                 {
                                     SetErrorResponse(callback, r.Exception);
                                     return null;
                                 }
-                                if (r.Result.HasAnnotation<HttpStatusCode>())
-                                    base.StatusCode = (int)r.Result.Annotation<HttpStatusCode>();
-                                else
-                                    base.StatusCode = 200;
-
-                                base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
-                                Console.WriteLine($"Success: {base.Stream.Length}");
-                                base.MimeType = "application/fhir+json";
-                                callback.Continue();
+                                var statusCode = r.Result.HasAnnotation<HttpStatusCode>() ? r.Result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                                SetResponse(callback, statusCode, r.Result);
                                 return r.Result;
                             }));
                             return CefReturnValue.ContinueAsync;
                         }
 
-                        // Search for the resource type
-                        var parameters = TupledParameters(uri, SearchQueryParameterNames);
-                        int? pagesize = GetIntParameter(uri, FhirParameter.COUNT);
-                        var summary = GetSummaryParameter(uri);
-                        System.Threading.Tasks.Task.Run(() => rs.Search(parameters, pagesize, summary).ContinueWith(r =>
-                        {
-                            if (r.Exception != null)
-                            {
-                                SetErrorResponse(callback, r.Exception);
-                                return null;
-                            }
-                            if (r.Result.HasAnnotation<HttpStatusCode>())
-                                base.StatusCode = (int)r.Result.Annotation<HttpStatusCode>();
-                            else
-                                base.StatusCode = 200;
-
-                            base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
-                            Console.WriteLine($"Success: {base.Stream.Length}");
-                            base.MimeType = "application/fhir+json";
-                            callback.Continue();
-                            return r.Result;
-                        }));
-                        return CefReturnValue.ContinueAsync;
+                        // This was not a recognized GET request, so we can just respond with a 404
+                        SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported system level GET operation");
+                        return CefReturnValue.Continue;
                     }
+
+                    // This was not a recognized GET request, so we can just respond with a 404
+                    SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported GET operation");
+                    return CefReturnValue.Continue;
                 }
                 if (request.Method == "POST")
                 {
@@ -195,105 +197,82 @@ namespace Hl7.Fhir.SmartAppLaunch
                                 SetErrorResponse(callback, r.Exception);
                                 return null;
                             }
-                            if (r.Result.HasAnnotation<HttpStatusCode>())
-                                base.StatusCode = (int)r.Result.Annotation<HttpStatusCode>();
-                            else
-                                base.StatusCode = 200;
-
-                            base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
-                            Console.WriteLine($"Success: {base.Stream.Length}");
-                            base.MimeType = "application/fhir+json";
-                            callback.Continue();
+                            var statusCode = r.Result.HasAnnotation<HttpStatusCode>() ? r.Result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                            SetResponse(callback, statusCode, r.Result);
                             return r.Result;
                         }));
                         return CefReturnValue.ContinueAsync;
                     }
 
-                    //System.Net.Http.HttpClient client = new System.Net.Http.HttpClient();
-                    //client.DefaultRequestHeaders.Add("Accept", request.GetHeaderByName("Accept"));
-                    //// client.DefaultRequestHeaders.Add("Content-Type", request.GetHeaderByName("Content-Type"));
-                    //HttpContent content = null;
-                    //if (request.PostData != null)
-                    //{
-                    //    var data = request.PostData.Elements.FirstOrDefault();
-                    //    var body = data.GetBody();
-                    //    content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, request.GetHeaderByName("Content-Type"));
-                    //}
-                    //else
-                    //{
-                    //    content = new System.Net.Http.StreamContent(null);
-                    //}
-                    //client.PostAsync(redirectedUrl, content).ContinueWith((System.Threading.Tasks.Task<HttpResponseMessage> r) =>
-                    //{
-                    //    if (r.Exception != null)
-                    //    {
-                    //        Console.WriteLine($"Error: {r.Exception.Message}");
-                    //        //if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
-                    //        //{
-                    //        //    base.StatusCode = (int)fe.Status;
-                    //        //    if (fe.Outcome != null)
-                    //        //        base.Stream = new MemoryStream(r.Result.Content.ReadAsStringAsync().GetAwaiter().GetResult());
-                    //        //    callback.Continue();
-                    //        //    System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
-                    //        //    return;
-                    //        //}
-                    //    }
-                    //    base.StatusCode = (int)r.Result.StatusCode;
+                    // TODO: support creating new resources
 
-                    //    base.Stream = r.Result.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
-                    //    Console.WriteLine($"Success: {base.Stream.Length}");
-                    //    base.MimeType = r.Result.Content.Headers.ContentType.MediaType;
-                    //    callback.Continue();
-                    //    return;
-                    //});
+                    // This was not a recognized POST request, so we can just respond with a 404
+                    SetErrorResponse(callback, HttpStatusCode.BadRequest, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported POST operation");
+                    return CefReturnValue.Continue;
                 }
                 if (request.Method == "PUT")
                 {
-                    //System.Net.Http.HttpClient client = new System.Net.Http.HttpClient();
-                    //client.DefaultRequestHeaders.Add("Accept", request.GetHeaderByName("Accept"));
-                    //// client.DefaultRequestHeaders.Add("Content-Type", request.GetHeaderByName("Content-Type"));
-                    //HttpContent content = null;
-                    //if (request.PostData != null)
-                    //{
-                    //    var data = request.PostData.Elements.FirstOrDefault();
-                    //    var body = data.GetBody();
-                    //    content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, request.GetHeaderByName("Content-Type"));
-                    //}
-                    //else
-                    //{
-                    //    content = new System.Net.Http.StreamContent(null);
-                    //}
-                    //client.PutAsync(redirectedUrl, content).ContinueWith((System.Threading.Tasks.Task<HttpResponseMessage> r) =>
-                    //{
-                    //    if (r.Exception != null)
-                    //    {
-                    //        Console.WriteLine($"Error: {r.Exception.Message}");
-                    //        //if (r.Exception.InnerException is Hl7.Fhir.Rest.FhirOperationException fe)
-                    //        //{
-                    //        //    base.StatusCode = (int)fe.Status;
-                    //        //    if (fe.Outcome != null)
-                    //        //        base.Stream = new MemoryStream(r.Result.Content.ReadAsStringAsync().GetAwaiter().GetResult());
-                    //        //    callback.Continue();
-                    //        //    System.Diagnostics.Trace.WriteLine($"Error (inner): {fe.Message}");
-                    //        //    return;
-                    //        //}
-                    //    }
-                    //    base.StatusCode = (int)r.Result.StatusCode;
+                    // TODO: support updating resources (or creating with client allocated ID)
 
-                    //    base.Stream = r.Result.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
-                    //    Console.WriteLine($"Success: {base.Stream.Length}");
-                    //    base.MimeType = r.Result.Content.Headers.ContentType.MediaType;
-                    //    callback.Continue();
-                    //    return;
-                    //});
+                    // This was not a recognized PUT request, so we can just respond with a 404
+                    SetErrorResponse(callback, HttpStatusCode.BadRequest, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported PUT operation");
+                    return CefReturnValue.Continue;
                 }
-                return CefReturnValue.ContinueAsync;
+
+                // This was an unknown request type
+                SetErrorResponse(callback, HttpStatusCode.BadRequest, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.NotSupported, "Unknown request");
+                return CefReturnValue.Continue;
             }
             catch (Exception ex)
             {
+                // Totally unknown request encountered
                 SetErrorResponse(callback, ex);
                 return CefReturnValue.Continue;
             }
+        }
+
+        /// <summary>
+        /// Send a custom error message back
+        /// </summary>
+        /// <param name="callback"></param>
+        /// <param name="status"></param>
+        /// <param name="severity"></param>
+        /// <param name="issueType"></param>
+        /// <param name="message"></param>
+        /// <param name="coding"></param>
+        private void SetErrorResponse(ICallback callback, HttpStatusCode status, OperationOutcome.IssueSeverity severity, OperationOutcome.IssueType issueType, string message, Coding coding = null)
+        {
+            System.Diagnostics.Trace.WriteLine($"Error: {message}");
+            OperationOutcome result = new OperationOutcome();
+            var issue = new OperationOutcome.IssueComponent()
+            {
+                Severity = severity,
+                Code = issueType,
+                Details = new CodeableConcept() { Text = message }
+            };
+            if (coding != null)
+                issue.Details.Coding.Add(coding);
+            result.Issue.Add(issue);
+
+            SetResponse(callback, status, result);  
+        }
+
+        /// <summary>
+        /// Set this FHIR Resource as the response to the request
+        /// </summary>
+        /// <param name="callback"></param>
+        /// <param name="status"></param>
+        /// <param name="resource"></param>
+        private void SetResponse(ICallback callback, HttpStatusCode status, Resource resource)
+        {
+            base.Headers.Add("Cache-Control", "no-store");
+            base.Headers.Add("Pragma", "no-cache");
+            base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(resource));
+            base.MimeType = "application/fhir+json";
+            base.StatusCode = (int)status;
+
+            if (!callback.IsDisposed)
+                callback.Continue();
         }
 
         private CefReturnValue ProcessFhirMetadataRequest(ICallback callback, ModelBaseInputs<IServiceProvider> requestDetails)
@@ -330,7 +309,8 @@ namespace Hl7.Fhir.SmartAppLaunch
                 base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
                 Console.WriteLine($"Success: {base.Stream.Length}");
                 base.MimeType = "application/fhir+json";
-                callback.Continue();
+                if (!callback.IsDisposed)
+                    callback.Continue();
                 return r.Result;
             }));
             return CefReturnValue.ContinueAsync;

@@ -81,9 +81,8 @@ namespace Hl7.Fhir.SmartAppLaunch
             }
             catch (Exception ex)
             {
-                base.StatusCode = (int)System.Net.HttpStatusCode.InternalServerError;
-                callback.Cancel();
-                return CefReturnValue.Cancel;
+                SetErrorResponse(callback, System.Net.HttpStatusCode.InternalServerError, ex.Message);
+                return CefReturnValue.Continue;
             }
         }
 
