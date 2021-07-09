@@ -402,16 +402,21 @@ namespace Hl7.Fhir.SmartAppLaunch
         {
             var list = new List<KeyValuePair<string, string>>();
 
-            System.Collections.Specialized.NameValueCollection nvp = System.Web.HttpUtility.ParseQueryString(requestUri.OriginalString);
-
-            if (nvp.HasKeys())
+            string query = requestUri.OriginalString;
+            if (query.Contains("?"))
             {
-                foreach (string key in nvp.Keys)
+                query = query.Substring(query.IndexOf("?")+1);
+                System.Collections.Specialized.NameValueCollection nvp = System.Web.HttpUtility.ParseQueryString(query);
+
+                if (nvp.HasKeys())
                 {
-                    if (excludeParameters == null || !excludeParameters.Contains(key))
+                    foreach (string key in nvp.Keys)
                     {
-                        foreach (string val in nvp.GetValues(key))
-                            list.Add(new KeyValuePair<string, string>(key, val));
+                        if (excludeParameters == null || !excludeParameters.Contains(key))
+                        {
+                            foreach (string val in nvp.GetValues(key))
+                                list.Add(new KeyValuePair<string, string>(key, val));
+                        }
                     }
                 }
             }
