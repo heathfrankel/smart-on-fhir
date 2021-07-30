@@ -4,6 +4,7 @@ using Hl7.Fhir.SmartAppLaunch;
 using Hl7.Fhir.Support;
 using Microsoft.Extensions.Configuration;
 using System;
+using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
@@ -18,7 +19,6 @@ namespace EHRApp
         private SmartApplicationDetails _app;
         private IFhirSmartAppContext _context;
 
-
         public SMARTForm()
         {
             InitializeComponent();
@@ -26,11 +26,8 @@ namespace EHRApp
 
         protected override void OnClosed(EventArgs e)
         {
+            Program.ActiveSession.RemoveSession(_browser.GetMainFrame().Identifier);
             base.OnClosed(e);
-
-            // dispose of the request context too
-            _browser.RequestContext.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.AuthAddress(_context), null);
-            _browser.RequestContext.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), null);
         }
 
         public static IConfigurationRoot Configuration()
@@ -44,19 +41,7 @@ namespace EHRApp
         {
             base.OnLoad(e);
 
-            // This is the path in the users non roaming application folder
-            // (You may consider if this should be removed after use, or even remove the cache path, which is essentially incognito mode)
-            RequestContext rc = new RequestContext(new RequestContextSettings()
-            {
-                CachePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"CefSharp\Cache")
-            });
-
-            // Register the handlers for this 
-            rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.AuthAddress(_context), new AuthProtocolSchemeHandlerFactory(_app, _context, GetIdToken));
-            // rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), new FhirFacadeProtocolSchemeHandlerFactory(_app, _context, () => { return new ComCare.FhirServer.Models.ComCareSystemService(Configuration()); }));
-            rc.RegisterSchemeHandlerFactory("https", AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context), new FhirProxyProtocolSchemeHandlerFactory(_app, _context, Globals.ApplicationSettings.FhirBaseUrl));
-
-            _browser = new ChromiumWebBrowser("about:blank", rc)
+            _browser = new ChromiumWebBrowser("about:blank", null)
             {
                 Dock = DockStyle.Fill
             };
@@ -77,29 +62,29 @@ namespace EHRApp
 
         public string GetIdToken(SmartApplicationDetails app, IFhirSmartAppContext context)
         {
-            return GenerateProviderJWTForNcsr(DateTime.Now);
+            return GenerateProviderJWTForNcsr(DateTime.Now, app, context);
         }
 
-        public string GenerateProviderJWTForNcsr(DateTime creationTime)
+        public static string GenerateProviderJWTForNcsr(DateTime creationTime, SmartApplicationDetails app, IFhirSmartAppContext context)
         {
             var payload = new
             {
-                sub = (_context as SmartAppContext).PractitionerId,
-                name = (_context as SmartAppContext).PractitionerName,
-                profile = (_context as SmartAppContext).PractitionerId,
-                iss = _app.Issuer,
-                aud = _app.Audience,
+                sub = (context as SmartAppContext).PractitionerId,
+                name = (context as SmartAppContext).PractitionerName,
+                profile = "https://" + Program.fhirServerAddress + "/Practitioner/" +  (context as SmartAppContext).PractitionerId,
+                iss = app.Issuer,
+                aud = app.Audience,
                 exp = creationTime.AddHours(1).ToUnixTime(),
                 jti = Guid.NewGuid().ToFhirId(),
                 iat = creationTime.AddMinutes(-1).ToUnixTime(),
                 nbf = creationTime.AddMinutes(-1).ToUnixTime(),
-                providerNo = (_context as SmartAppContext).MedicareProviderNumber,
+                providerNo = (context as SmartAppContext).MedicareProviderNumber,
                 isDelegate = "N",
                 roles = new[] { "Practitioner", "PracticeManager" },
                 pmsver = "Example EHR v1.34",
-                practitioner = _context.ContextProperties.FirstOrDefault(cp => cp.Key == "practitioner").Value,
-                practitionerrole = _context.ContextProperties.FirstOrDefault(cp => cp.Key == "practitionerrole").Value,
-                organization = _context.ContextProperties.FirstOrDefault(cp => cp.Key == "organization").Value
+                practitioner = context.ContextProperties.FirstOrDefault(cp => cp.Key == "practitioner").Value,
+                practitionerrole = context.ContextProperties.FirstOrDefault(cp => cp.Key == "practitionerrole").Value,
+                organization = context.ContextProperties.FirstOrDefault(cp => cp.Key == "organization").Value
             };
 
             // Provide the NASH Digital Certificate (with Private Key)
@@ -107,7 +92,7 @@ namespace EHRApp
 
             var extraHeaders = new System.Collections.Generic.Dictionary<string, object>();
             extraHeaders.Add("typ", "JWT");
-            extraHeaders.Add("x5c", GetNashPublicKeyChain(cert));
+            extraHeaders.Add(JwtHeaderParameterNames.X5c, GetNashPublicKeyChain(cert));
 
             // Now generate the Identity Token
             string token = Jose.JWT.Encode(payload, cert.GetRSAPrivateKey(), Jose.JwsAlgorithm.RS256, extraHeaders);
@@ -149,6 +134,9 @@ namespace EHRApp
 
         private void _browser_IsBrowserInitializedChanged(object sender, EventArgs e)
         {
+            // register our session
+            Program.ActiveSession.RegisterSession(_browser.GetMainFrame().Identifier, _app, _context);
+
             // Sneaky cheat control code to automatically popup the dev tools
             if ((Control.ModifierKeys & Keys.Control) == Keys.Control)
             {
@@ -196,7 +184,7 @@ namespace EHRApp
         {
             _app = application;
             _context = context;
-            _url = $"{application.Url}?iss=https://{AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_context)}&launch={context.LaunchContext}";
+            _url = $"{application.Url}?iss=https://{Program.fhirServerAddress}&launch={context.LaunchContext}";
         }
 
         private void OnBrowserAddressChanged(object sender, AddressChangedEventArgs e)
@@ -208,7 +196,7 @@ namespace EHRApp
 
         private void OnBrowserTitleChanged(object sender, TitleChangedEventArgs e)
         {
-            this.InvokeOnUiThreadIfRequired(() => Text = e.Title);
+            this.InvokeOnUiThreadIfRequired(() => Text = (_context as SmartAppContext).PatientNameForDebug + ": " + e.Title);
         }
 
         private void OnBrowserStatusMessage(object sender, StatusMessageEventArgs e)

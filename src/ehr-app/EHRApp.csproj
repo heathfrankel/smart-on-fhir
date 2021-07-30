@@ -172,6 +172,7 @@
   <ItemGroup>
     <Compile Include="ApplicationSettings.cs" />
     <Compile Include="ControlExtensions.cs" />
+    <Compile Include="CreateClaimsPrincipal.cs" />
     <Compile Include="Globals.cs" />
     <Compile Include="IPatientData.cs" />
     <Compile Include="MDIParent.cs">
