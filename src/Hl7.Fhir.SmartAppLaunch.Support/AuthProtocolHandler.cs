@@ -9,36 +9,28 @@ namespace Hl7.Fhir.SmartAppLaunch
 {
     public class AuthProtocolSchemeHandlerFactory : ISchemeHandlerFactory
     {
-        public static string AuthAddress(IFhirSmartAppContext context) => $"{context.LaunchContext}.identity.localhost";
-        public static string FhirFacadeAddress(IFhirSmartAppContext context) => $"{context.LaunchContext}.fhir-facade.localhost";
-
-        public AuthProtocolSchemeHandlerFactory(SmartApplicationDetails app, IFhirSmartAppContext context, Func<SmartApplicationDetails, IFhirSmartAppContext, string> getIdToken = null)
+        public AuthProtocolSchemeHandlerFactory(SmartSessions sessionManager)
         {
-            _app = app;
-            _context = context;
-            _getIdToken = getIdToken;
+            _sessionManager = sessionManager;
         }
-        private SmartApplicationDetails _app;
-        private IFhirSmartAppContext _context;
-        private Func<SmartApplicationDetails, IFhirSmartAppContext, string> _getIdToken;
+        private SmartSessions _sessionManager;
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
-            return new AuthProtocolSchemeHandler(_app, _context, _getIdToken);
+            var session = _sessionManager.GetSession(browser.MainFrame.Identifier);
+            return new AuthProtocolSchemeHandler(session.app, session.context);
         }
     }
 
     public class AuthProtocolSchemeHandler : ResourceHandler
     {
-        public AuthProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext context, Func<SmartApplicationDetails, IFhirSmartAppContext, string> getIdToken)
+        public AuthProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext context)
         {
             _app = app;
             _context = context;
-            _getIdToken = getIdToken;
         }
         private SmartApplicationDetails _app;
         private IFhirSmartAppContext _context;
-        private Func<SmartApplicationDetails, IFhirSmartAppContext, string> _getIdToken;
 
         // Process request and craft response.
         public override CefReturnValue ProcessRequestAsync(IRequest request, ICallback callback)
@@ -51,7 +43,8 @@ namespace Hl7.Fhir.SmartAppLaunch
                     base.Headers.Add("Access-Control-Allow-Origin", _app.AllowedHosts);
                 base.Headers.Add("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
                 base.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Accept, authorization");
-                callback.Continue();
+                if (!callback.IsDisposed)
+                    callback.Continue();
                 return CefReturnValue.Continue;
             }
             var uri = new Uri(request.Url);
@@ -76,7 +69,8 @@ namespace Hl7.Fhir.SmartAppLaunch
                 // --------------------------------------------------------------------
                 // This was not handled as any currently supported Auth operation, so its a big no, nothing found.
                 base.StatusCode = (int)System.Net.HttpStatusCode.NotFound;
-                callback.Continue();
+                if (!callback.IsDisposed)
+                    callback.Continue();
                 return CefReturnValue.Continue;
             }
             catch (Exception ex)
@@ -110,7 +104,8 @@ namespace Hl7.Fhir.SmartAppLaunch
                 base.Headers.Add("Pragma", "no-cache");
                 base.MimeType = "text/html;charset=UTF-8";
 
-                callback.Continue();
+                if (!callback.IsDisposed)
+                    callback.Continue();
                 return CefReturnValue.Continue;
             }
 
@@ -124,7 +119,8 @@ namespace Hl7.Fhir.SmartAppLaunch
                 base.Headers.Add("Pragma", "no-cache");
                 base.MimeType = "text/html;charset=UTF-8";
 
-                callback.Continue();
+                if (!callback.IsDisposed)
+                    callback.Continue();
                 return CefReturnValue.Continue;
             }
 
@@ -192,10 +188,10 @@ namespace Hl7.Fhir.SmartAppLaunch
 
             // Grab the id_token if it's required
             string id_token = null;
-            if ((_context.Scopes.Contains("fhirUser") || _context.Scopes.Contains("profile")) && _context.Scopes.Contains("openid") && _getIdToken != null)
+            if ((_context.Scopes.Contains("fhirUser") || _context.Scopes.Contains("profile")) && _context.Scopes.Contains("openid"))
             {
                 // Need to also include the id_token
-                id_token = _getIdToken(_app, _context);
+                id_token = _context.GetIdToken(_app);
             }
 
             // All has been validated correctly, so we can return the token response

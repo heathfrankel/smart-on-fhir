@@ -16,38 +16,45 @@ using Newtonsoft.Json;
 
 namespace Hl7.Fhir.SmartAppLaunch
 {
-    public class FhirFacadeProtocolSchemeHandlerFactory : ISchemeHandlerFactory
+    public class FhirFacadeProtocolSchemeHandlerFactory : FhirBaseProtocolSchemeHandlerFactory, ISchemeHandlerFactory
     {
-        public FhirFacadeProtocolSchemeHandlerFactory(SmartApplicationDetails app, IFhirSmartAppContext launchContext, Func<IFhirSystemServiceR4<IServiceProvider>> facadeFactory)
+        public FhirFacadeProtocolSchemeHandlerFactory(SmartSessions sessionManager, string fhirServerBaseUrl, string identityServerBaseUrl, Func<IFhirSystemServiceR4<IServiceProvider>> facadeFactory)
+            :base(sessionManager, fhirServerBaseUrl, identityServerBaseUrl)
         {
-            _app = app;
-            _launchContext = launchContext;
             _facadeFactory = facadeFactory;
         }
-        private SmartApplicationDetails _app;
-        private IFhirSmartAppContext _launchContext;
         private Func<IFhirSystemServiceR4<IServiceProvider>> _facadeFactory;
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
-            return new FhirFacadeProtocolSchemeHandler(_app, _launchContext, _facadeFactory());
+            var session = _sessionManager.GetSession(browser.MainFrame.Identifier);
+            System.Diagnostics.Trace.WriteLine($"{request.Method}: {request.Url}");
+            System.Diagnostics.Trace.WriteLine($"  Content-type: {request.Headers["Content-Type"]}");
+            string HeaderAuth = request.Headers["Authorization"];
+            if (!string.IsNullOrEmpty(HeaderAuth))
+            {
+                System.Diagnostics.Trace.WriteLine($"  Authorization: {HeaderAuth}");
+                System.Diagnostics.Trace.WriteLine($"{session.app.Name}: {session.context.Bearer}");
+                foreach (var p in session.context.ContextProperties)
+                {
+                    System.Diagnostics.Trace.WriteLine($"  {p.Key}: {p.Value}");
+                }
+            }
+            return new FhirFacadeProtocolSchemeHandler(session.app, session.context, _fhirServerBaseUrl, _identityServerBaseUrl, _facadeFactory());
         }
     }
 
-    public class FhirFacadeProtocolSchemeHandler : ResourceHandler
+    public class FhirFacadeProtocolSchemeHandler : FhirBaseProtocolSchemeHandler
     {
         readonly string[] SearchQueryParameterNames = { "_summary", "_sort", "_count", "_format" };
         readonly string[] OperationQueryParameterNames = { "_summary", "_format" };
 
 
-        public FhirFacadeProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext launchContext, IFhirSystemServiceR4<IServiceProvider> facade)
+        public FhirFacadeProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext launchContext, string fhirServerBaseUrl, string identityServerBaseUrl, IFhirSystemServiceR4<IServiceProvider> facade)
+            : base(app, launchContext, fhirServerBaseUrl, identityServerBaseUrl)
         {
-            _app = app;
-            _launchContext = launchContext;
             _facade = facade;
         }
-        private SmartApplicationDetails _app;
-        private IFhirSmartAppContext _launchContext;
         private IFhirSystemServiceR4<IServiceProvider> _facade;
 
 
@@ -65,25 +72,18 @@ namespace Hl7.Fhir.SmartAppLaunch
         {
             if (request.Method == "OPTIONS")
             {
-                // This is the CORS request, and that's good as we do want to support CORS calls to our "facade"
-                base.StatusCode = 200;
-                //if (!string.IsNullOrEmpty(_app.AllowedHosts))
-                //    base.Headers.Add("Access-Control-Allow-Origin", _app.AllowedHosts);
-                base.Headers.Add("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
-                base.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Accept, authorization");
-                callback.Continue();
-                return CefReturnValue.Continue;
+                return WriteOptionsOutput(callback);
             }
             var uri = new Uri(request.Url);
             Console.WriteLine($"-----------------\r\n{request.Url}");
 
             // Check the bearer header (as all calls to this API MUST be provided the bearer token, otherwise are straight rejected)
+            string bearer = request.GetHeaderByName("authorization");
             if (!string.IsNullOrEmpty(_launchContext.Bearer))
             {
-                string bearer = request.GetHeaderByName("authorization");
                 if (bearer != "Bearer " + _launchContext.Bearer)
                 {
-                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "No Bearer token provided for this request");
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "Invalid Bearer token provided for this request");
                     return CefReturnValue.Continue;
                 }
             }
@@ -102,9 +102,10 @@ namespace Hl7.Fhir.SmartAppLaunch
                 {
                     headers.Add(new KeyValuePair<string, IEnumerable<string>>(key, request.Headers.GetValues(key)));
                 }
-                ModelBaseInputs<IServiceProvider> requestDetails = new ModelBaseInputs<IServiceProvider>(_launchContext.Principal, null, request.Method, uri, new Uri($"https://{AuthProtocolSchemeHandlerFactory.FhirFacadeAddress(_launchContext)}"), null, headers, null);
+                ModelBaseInputs<IServiceProvider> requestDetails = new ModelBaseInputs<IServiceProvider>(_launchContext.Principal, null, request.Method, uri, new Uri($"https://{_fhirServerBaseUrl}"), null, headers, null);
                 if (request.Method == "GET")
                 {
+                    // The metadata routes are the only ones that are permitted without the bearer token
                     if (uri.LocalPath == "/.well-known/smart-configuration")
                     {
                         return ProcessWellKnownSmartConfigurationRequest(callback);
@@ -112,6 +113,12 @@ namespace Hl7.Fhir.SmartAppLaunch
                     if (uri.LocalPath == "/metadata" || uri.LocalPath == "/")
                     {
                         return ProcessFhirMetadataRequest(callback, requestDetails);
+                    }
+
+                    if (string.IsNullOrEmpty(bearer))
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "No Bearer token provided for this request");
+                        return CefReturnValue.Continue;
                     }
 
                     if (!uri.LocalPath.StartsWith("/$") && !uri.LocalPath.StartsWith("/_") && uri.LocalPath.Length > 2)
@@ -177,6 +184,11 @@ namespace Hl7.Fhir.SmartAppLaunch
                 }
                 if (request.Method == "POST")
                 {
+                    if (string.IsNullOrEmpty(bearer))
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "No Bearer token provided for this request");
+                        return CefReturnValue.Continue;
+                    }
                     if (uri.LocalPath == "/")
                     {
                         Bundle b = null;
@@ -212,6 +224,11 @@ namespace Hl7.Fhir.SmartAppLaunch
                 }
                 if (request.Method == "PUT")
                 {
+                    if (string.IsNullOrEmpty(bearer))
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "No Bearer token provided for this request");
+                        return CefReturnValue.Continue;
+                    }
                     // TODO: support updating resources (or creating with client allocated ID)
 
                     // This was not a recognized PUT request, so we can just respond with a 404
@@ -229,50 +246,6 @@ namespace Hl7.Fhir.SmartAppLaunch
                 SetErrorResponse(callback, ex);
                 return CefReturnValue.Continue;
             }
-        }
-
-        /// <summary>
-        /// Send a custom error message back
-        /// </summary>
-        /// <param name="callback"></param>
-        /// <param name="status"></param>
-        /// <param name="severity"></param>
-        /// <param name="issueType"></param>
-        /// <param name="message"></param>
-        /// <param name="coding"></param>
-        private void SetErrorResponse(ICallback callback, HttpStatusCode status, OperationOutcome.IssueSeverity severity, OperationOutcome.IssueType issueType, string message, Coding coding = null)
-        {
-            System.Diagnostics.Trace.WriteLine($"Error: {message}");
-            OperationOutcome result = new OperationOutcome();
-            var issue = new OperationOutcome.IssueComponent()
-            {
-                Severity = severity,
-                Code = issueType,
-                Details = new CodeableConcept() { Text = message }
-            };
-            if (coding != null)
-                issue.Details.Coding.Add(coding);
-            result.Issue.Add(issue);
-
-            SetResponse(callback, status, result);  
-        }
-
-        /// <summary>
-        /// Set this FHIR Resource as the response to the request
-        /// </summary>
-        /// <param name="callback"></param>
-        /// <param name="status"></param>
-        /// <param name="resource"></param>
-        private void SetResponse(ICallback callback, HttpStatusCode status, Resource resource)
-        {
-            base.Headers.Add("Cache-Control", "no-store");
-            base.Headers.Add("Pragma", "no-cache");
-            base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(resource));
-            base.MimeType = "application/fhir+json";
-            base.StatusCode = (int)status;
-
-            if (!callback.IsDisposed)
-                callback.Continue();
         }
 
         private CefReturnValue ProcessFhirMetadataRequest(ICallback callback, ModelBaseInputs<IServiceProvider> requestDetails)
@@ -303,8 +276,8 @@ namespace Hl7.Fhir.SmartAppLaunch
                 }
                 // remove the existing authentications, and put in our own
                 extension.Extension.Clear();
-                extension.AddExtension("token", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token"));
-                extension.AddExtension("authorize", new FhirUri($"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize"));
+                extension.AddExtension("token", new FhirUri($"https://{_identityServerBaseUrl}/token"));
+                extension.AddExtension("authorize", new FhirUri($"https://{_identityServerBaseUrl}/authorize"));
 
                 base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
                 Console.WriteLine($"Success: {base.Stream.Length}");
@@ -323,9 +296,9 @@ namespace Hl7.Fhir.SmartAppLaunch
             // http://build.fhir.org/ig/HL7/smart-app-launch/conformance.html
             FhirSmartAppLaunchConfiguration smart_config = new FhirSmartAppLaunchConfiguration();
             // populate the context based on the data we know
-            smart_config.issuer = _app.Issuer;
-            smart_config.authorization_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/authorize";
-            smart_config.token_endpoint = $"https://{AuthProtocolSchemeHandlerFactory.AuthAddress(_launchContext)}/token";
+            smart_config.issuer = $"https://{_identityServerBaseUrl}";
+            smart_config.authorization_endpoint = $"https://{_identityServerBaseUrl}/authorize";
+            smart_config.token_endpoint = $"https://{_identityServerBaseUrl}/token";
             smart_config.scopes_supported = _app.AllowedScopes;
             smart_config.response_types_supported = new[] { "code", "code id_token" };
             var capabilities = new List<string> { "launch-ehr", "permission-v2", "context-ehr-patient", "authorize-post" };
@@ -345,51 +318,9 @@ namespace Hl7.Fhir.SmartAppLaunch
             base.MimeType = "application/json;charset=UTF-8";
 
             Console.WriteLine($"Success: {base.Stream.Length}");
-            callback.Continue();
-            return CefReturnValue.Continue;
-        }
-
-        private void SetErrorResponse(ICallback callback, Exception ex)
-        {
-            System.Diagnostics.Trace.WriteLine($"Error: {ex.Message}");
-            base.Headers.Add("Cache-Control", "no-store");
-            base.Headers.Add("Pragma", "no-cache");
-
-            OperationOutcome result = new OperationOutcome();
-            HttpStatusCode? status = null;
-            // process the exception (and all it's inner exceptions
-            while (ex != null)
-            {
-                if (ex is Hl7.Fhir.Rest.FhirOperationException fe)
-                {
-                    if (!status.HasValue)
-                        status = fe.Status;
-                    if (fe.Outcome != null)
-                    {
-                        result.Issue.AddRange(fe.Outcome.Issue);
-                    }
-                }
-                else
-                {
-                    result.Issue.Add(new OperationOutcome.IssueComponent()
-                    {
-                        Severity = OperationOutcome.IssueSeverity.Fatal,
-                        Code = OperationOutcome.IssueType.Exception,
-                        Details = new CodeableConcept() { Text = ex.Message }
-                    });
-                }
-                ex = ex.InnerException;
-            }
-
-            base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(result));
-            base.MimeType = "application/fhir+json";
-            if (status.HasValue)
-                base.StatusCode = (int)status.Value;
-            else
-                base.StatusCode = (int)HttpStatusCode.InternalServerError;
-
             if (!callback.IsDisposed)
                 callback.Continue();
+            return CefReturnValue.Continue;
         }
 
         /// <summary>
@@ -405,7 +336,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             string query = requestUri.OriginalString;
             if (query.Contains("?"))
             {
-                query = query.Substring(query.IndexOf("?")+1);
+                query = query.Substring(query.IndexOf("?") + 1);
                 System.Collections.Specialized.NameValueCollection nvp = System.Web.HttpUtility.ParseQueryString(query);
 
                 if (nvp.HasKeys())

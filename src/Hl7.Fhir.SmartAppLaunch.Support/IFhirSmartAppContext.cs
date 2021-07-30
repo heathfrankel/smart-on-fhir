@@ -54,8 +54,13 @@ namespace Hl7.Fhir.SmartAppLaunch
         /// <summary>
         /// Function that is be called by the SmartAppLaunch Support cefsharp handlers when the id_token is requested
         /// </summary>
-        /// <returns></returns>
-        string GetIdToken();
+        /// <remarks>
+        /// During the processing of this operation you may populate the <b>Principal</b> property
+        /// using the <b>CreateClaimsPrincipal.ToPrincipal()</b> extension method
+        /// </remarks>
+        /// <param name="appDetails">The details of the SMART application that is requesting the identity token</param>
+        /// <returns>a signed and encoded JWT token</returns>
+        string GetIdToken(SmartApplicationDetails appDetails);
 
         /// <summary>
         /// And additional context properties to be included in the TokenRequest response
