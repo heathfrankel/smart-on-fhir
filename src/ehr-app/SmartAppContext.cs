@@ -12,14 +12,16 @@ namespace EHRApp
         public string Bearer { get; set; }
         public string Scopes { get; set; }
         public DateTimeOffset ExpiresAt { get; set; }
-        public System.Security.Principal.IPrincipal Principal { get; }
+        public System.Security.Principal.IPrincipal Principal { get; set; }
 
         public List<KeyValuePair<string, string>> ContextProperties { get; } = new List<KeyValuePair<string, string>>();
         IEnumerable<KeyValuePair<string, string>> IFhirSmartAppContext.ContextProperties => ContextProperties;
 
-        public string GetIdToken()
+        public string GetIdToken(SmartApplicationDetails appDetails)
         {
-            return null;
+            var token = SMARTForm.GenerateProviderJWTForNcsr(DateTime.Now, appDetails, this);
+            Principal = this.ToPrincipal(appDetails, token);
+            return token;
         }
 
         public string PatientNameForDebug { get; set; }
