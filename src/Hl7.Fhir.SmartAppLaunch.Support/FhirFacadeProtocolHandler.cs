@@ -23,6 +23,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             : base(sessionManager, fhirServerBaseUrl, identityServerBaseUrl)
         {
             _facadeFactory = facadeFactory;
+            _applySmartScopes = applySmartScopes;
         }
         private Func<IFhirSystemServiceR4<TSP>> _facadeFactory;
         private bool _applySmartScopes;
