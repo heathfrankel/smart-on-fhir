@@ -16,14 +16,15 @@ using Newtonsoft.Json;
 
 namespace Hl7.Fhir.SmartAppLaunch
 {
-    public class FhirFacadeProtocolSchemeHandlerFactory : FhirBaseProtocolSchemeHandlerFactory, ISchemeHandlerFactory
+    public class FhirFacadeProtocolSchemeHandlerFactory<TSP> : FhirBaseProtocolSchemeHandlerFactory, ISchemeHandlerFactory
+        where TSP: class
     {
-        public FhirFacadeProtocolSchemeHandlerFactory(SmartSessions sessionManager, string fhirServerBaseUrl, string identityServerBaseUrl, Func<IFhirSystemServiceR4<IServiceProvider>> facadeFactory)
-            :base(sessionManager, fhirServerBaseUrl, identityServerBaseUrl)
+        public FhirFacadeProtocolSchemeHandlerFactory(SmartSessions sessionManager, string fhirServerBaseUrl, string identityServerBaseUrl, Func<IFhirSystemServiceR4<TSP>> facadeFactory)
+            : base(sessionManager, fhirServerBaseUrl, identityServerBaseUrl)
         {
             _facadeFactory = facadeFactory;
         }
-        private Func<IFhirSystemServiceR4<IServiceProvider>> _facadeFactory;
+        private Func<IFhirSystemServiceR4<TSP>> _facadeFactory;
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
@@ -40,22 +41,23 @@ namespace Hl7.Fhir.SmartAppLaunch
                     System.Diagnostics.Trace.WriteLine($"  {p.Key}: {p.Value}");
                 }
             }
-            return new FhirFacadeProtocolSchemeHandler(session.app, session.context, _fhirServerBaseUrl, _identityServerBaseUrl, _facadeFactory());
+            return new FhirFacadeProtocolSchemeHandler<TSP>(session.app, session.context, _fhirServerBaseUrl, _identityServerBaseUrl, _facadeFactory());
         }
     }
 
-    public class FhirFacadeProtocolSchemeHandler : FhirBaseProtocolSchemeHandler
+    public class FhirFacadeProtocolSchemeHandler<TSP> : FhirBaseProtocolSchemeHandler
+        where TSP : class
     {
         readonly string[] SearchQueryParameterNames = { "_summary", "_sort", "_count", "_format" };
         readonly string[] OperationQueryParameterNames = { "_summary", "_format" };
 
 
-        public FhirFacadeProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext launchContext, string fhirServerBaseUrl, string identityServerBaseUrl, IFhirSystemServiceR4<IServiceProvider> facade)
+        public FhirFacadeProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext launchContext, string fhirServerBaseUrl, string identityServerBaseUrl, IFhirSystemServiceR4<TSP> facade)
             : base(app, launchContext, fhirServerBaseUrl, identityServerBaseUrl)
         {
             _facade = facade;
         }
-        private IFhirSystemServiceR4<IServiceProvider> _facade;
+        private IFhirSystemServiceR4<TSP> _facade;
 
 
         /// <summary>
@@ -102,7 +104,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                 {
                     headers.Add(new KeyValuePair<string, IEnumerable<string>>(key, request.Headers.GetValues(key)));
                 }
-                ModelBaseInputs<IServiceProvider> requestDetails = new ModelBaseInputs<IServiceProvider>(_launchContext.Principal, null, request.Method, uri, new Uri($"https://{_fhirServerBaseUrl}"), null, headers, null);
+                ModelBaseInputs<TSP> requestDetails = new ModelBaseInputs<TSP>(_launchContext.Principal, null, request.Method, uri, new Uri($"https://{_fhirServerBaseUrl}"), null, headers, null);
                 if (request.Method == "GET")
                 {
                     // The metadata routes are the only ones that are permitted without the bearer token
@@ -149,8 +151,16 @@ namespace Hl7.Fhir.SmartAppLaunch
                                         SetErrorResponse(callback, r.Exception);
                                         return null;
                                     }
-                                    var statusCode = r.Result.HasAnnotation<HttpStatusCode>() ? r.Result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
-                                    SetResponse(callback, statusCode, r.Result);
+                                    if (r.Result == null)
+                                    {
+                                        SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotFound, $"Resource {resourceType}/{ri.Id} was not found");
+                                        return null;
+                                    }
+                                    else
+                                    {
+                                        var statusCode = r.Result?.HasAnnotation<HttpStatusCode>() == true ? r.Result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                                        SetResponse(callback, statusCode, r.Result);
+                                    }
                                     return r.Result;
                                 }));
                                 return CefReturnValue.ContinueAsync;
@@ -248,7 +258,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             }
         }
 
-        private CefReturnValue ProcessFhirMetadataRequest(ICallback callback, ModelBaseInputs<IServiceProvider> requestDetails)
+        private CefReturnValue ProcessFhirMetadataRequest(ICallback callback, ModelBaseInputs<TSP> requestDetails)
         {
             System.Threading.Tasks.Task.Run(() => _facade.GetConformance(requestDetails, Rest.SummaryType.False).ContinueWith<CapabilityStatement>(r =>
             {
