@@ -30,6 +30,24 @@ namespace Hl7.Fhir.SmartAppLaunch
             return null;
         }
 
+        /// <summary>
+        /// Return the Encounter ID that is in the context
+        /// </summary>
+        /// <param name="me"></param>
+        /// <returns></returns>
+        public static string EncounterInContext(this IPrincipal me)
+        {
+            if (me is ClaimsPrincipal cp)
+            {
+                var cEncounterId = cp.FindFirst("encounter");
+                if (cEncounterId != null)
+                {
+                    return cEncounterId.Value;
+                }
+            }
+            return null;
+        }
+
         public static ClaimsPrincipal ToPrincipal(this IFhirSmartAppContext context, SmartApplicationDetails appDetails, string jwt)
         {
             var handler = new JwtSecurityTokenHandler();
