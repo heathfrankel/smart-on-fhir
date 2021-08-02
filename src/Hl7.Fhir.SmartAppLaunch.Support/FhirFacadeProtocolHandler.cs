@@ -19,12 +19,13 @@ namespace Hl7.Fhir.SmartAppLaunch
     public class FhirFacadeProtocolSchemeHandlerFactory<TSP> : FhirBaseProtocolSchemeHandlerFactory, ISchemeHandlerFactory
         where TSP: class
     {
-        public FhirFacadeProtocolSchemeHandlerFactory(SmartSessions sessionManager, string fhirServerBaseUrl, string identityServerBaseUrl, Func<IFhirSystemServiceR4<TSP>> facadeFactory)
+        public FhirFacadeProtocolSchemeHandlerFactory(SmartSessions sessionManager, string fhirServerBaseUrl, string identityServerBaseUrl, Func<IFhirSystemServiceR4<TSP>> facadeFactory, bool applySmartScopes = false)
             : base(sessionManager, fhirServerBaseUrl, identityServerBaseUrl)
         {
             _facadeFactory = facadeFactory;
         }
         private Func<IFhirSystemServiceR4<TSP>> _facadeFactory;
+        private bool _applySmartScopes;
 
         public IResourceHandler Create(IBrowser browser, IFrame frame, string schemeName, IRequest request)
         {
@@ -41,7 +42,9 @@ namespace Hl7.Fhir.SmartAppLaunch
                     System.Diagnostics.Trace.WriteLine($"  {p.Key}: {p.Value}");
                 }
             }
-            return new FhirFacadeProtocolSchemeHandler<TSP>(session.app, session.context, _fhirServerBaseUrl, _identityServerBaseUrl, _facadeFactory());
+            if (session == null)
+                return null;
+            return new FhirFacadeProtocolSchemeHandler<TSP>(session.app, session.context, _fhirServerBaseUrl, _identityServerBaseUrl, _facadeFactory(), _applySmartScopes);
         }
     }
 
@@ -52,12 +55,14 @@ namespace Hl7.Fhir.SmartAppLaunch
         readonly string[] OperationQueryParameterNames = { "_summary", "_format" };
 
 
-        public FhirFacadeProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext launchContext, string fhirServerBaseUrl, string identityServerBaseUrl, IFhirSystemServiceR4<TSP> facade)
+        public FhirFacadeProtocolSchemeHandler(SmartApplicationDetails app, IFhirSmartAppContext launchContext, string fhirServerBaseUrl, string identityServerBaseUrl, IFhirSystemServiceR4<TSP> facade, bool applySmartScopes)
             : base(app, launchContext, fhirServerBaseUrl, identityServerBaseUrl)
         {
             _facade = facade;
+            _applySmartScopes = applySmartScopes;
         }
         private IFhirSystemServiceR4<TSP> _facade;
+        private bool _applySmartScopes;
 
 
         /// <summary>
@@ -144,6 +149,24 @@ namespace Hl7.Fhir.SmartAppLaunch
                             ResourceIdentity ri = new ResourceIdentity(uri);
                             if (ri.IsRestResourceIdentity())
                             {
+                                // Check that this is within the smart context
+                                if (_applySmartScopes)
+                                {
+                                    var scopeRead = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.read);
+                                    if (scopeRead?.ReadAccess == false)
+                                    {
+                                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User.Identity.Name}/App {_app.Name} does not have read access on {resourceType}");
+                                        return CefReturnValue.Continue;
+                                    }
+                                    if (resourceType == "Patient")
+                                    {
+                                        if (requestDetails.User.PatientInContext() != ri.Id)
+                                        {
+                                            SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User.Identity.Name}/App {_app.Name} does not have access to {resourceType}/{ri.Id}");
+                                            return CefReturnValue.Continue;
+                                        }
+                                    }
+                                }
                                 System.Threading.Tasks.Task.Run(() => rs.Get(ri.Id, ri.VersionId, summary).ContinueWith(r =>
                                 {
                                     if (r.Exception != null)
@@ -158,6 +181,13 @@ namespace Hl7.Fhir.SmartAppLaunch
                                     }
                                     else
                                     {
+                                        // Check for security access to this resource before returning it
+                                        if (resourceType != "Patient")
+                                        {
+                                            // This will need to be done by the Model classes, not the facade
+                                        }
+
+                                        // All good return the resource
                                         var statusCode = r.Result?.HasAnnotation<HttpStatusCode>() == true ? r.Result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
                                         SetResponse(callback, statusCode, r.Result);
                                     }
@@ -167,8 +197,35 @@ namespace Hl7.Fhir.SmartAppLaunch
                             }
 
                             // Search for the resource type
-                            var parameters = TupledParameters(uri, SearchQueryParameterNames);
+                            var parameters = TupledParameters(uri, SearchQueryParameterNames).ToList(); // convert to a list so that we can append the patient ID when required
                             int? pagesize = GetIntParameter(uri, FhirParameter.COUNT);
+                            if (_applySmartScopes)
+                            {
+                                var scopeSearch = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.search);
+                                if (scopeSearch?.SearchAccess == false)
+                                {
+                                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User.Identity.Name}/App {_app.Name} does not have search access on {resourceType}");
+                                    return CefReturnValue.Continue;
+                                }
+                                if (scopeSearch?.SmartUserType == SmartUserType.patient)
+                                {
+                                    if (!string.IsNullOrEmpty(requestDetails.User.PatientInContext()))
+                                    {
+                                        if (resourceType == "Patient")
+                                        {
+                                            parameters.Add(new KeyValuePair<string, string>("_id", requestDetails.User.PatientInContext()));
+                                        }
+                                        else if (Hl7.Fhir.Model.ModelInfo.SearchParameters.Any(sp => sp.Resource == resourceType && sp.Name == "patient"))
+                                        {
+                                            parameters.Add(new KeyValuePair<string, string>("patient", requestDetails.User.PatientInContext()));
+                                        }
+                                        else if (Hl7.Fhir.Model.ModelInfo.SearchParameters.Any(sp => sp.Resource == resourceType && sp.Name == "subject"))
+                                        {
+                                            parameters.Add(new KeyValuePair<string, string>("subject", requestDetails.User.PatientInContext()));
+                                        }
+                                    }
+                                }
+                            }
                             System.Threading.Tasks.Task.Run(() => rs.Search(parameters, pagesize, summary).ContinueWith(r =>
                             {
                                 if (r.Exception != null)

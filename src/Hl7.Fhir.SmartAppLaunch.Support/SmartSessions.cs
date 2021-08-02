@@ -24,7 +24,9 @@ namespace Hl7.Fhir.SmartAppLaunch
         /// <returns></returns>
         public SmartSession GetSession(long browserFrameIdentifier)
         {
-            return SessionByFrameIdentifier[browserFrameIdentifier];
+            if (SessionByFrameIdentifier.ContainsKey(browserFrameIdentifier))
+                return SessionByFrameIdentifier[browserFrameIdentifier];
+            return null;
         }
 
         /// <summary>

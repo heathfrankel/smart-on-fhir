@@ -72,6 +72,15 @@ namespace Hl7.Fhir.SmartAppLaunch
                         result.Issue.AddRange(fe.Outcome.Issue);
                     }
                 }
+                else if (ex is FhirServerException fe2)
+                {
+                    if (!status.HasValue)
+                        status = fe2.StatusCode;
+                    if (fe2.Outcome != null)
+                    {
+                        result.Issue.AddRange(fe2.Outcome.Issue);
+                    }
+                }
                 else
                 {
                     result.Issue.Add(new OperationOutcome.IssueComponent()

@@ -1,18 +1,38 @@
 ﻿using Hl7.Fhir.SmartAppLaunch;
 using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Security.Claims;
+using System.Security.Principal;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace EHRApp
+namespace Hl7.Fhir.SmartAppLaunch
 {
     public static class CreateClaimsPrincipal
     {
+        /// <summary>
+        /// Return the Patient ID that is in the context
+        /// </summary>
+        /// <param name="me"></param>
+        /// <returns></returns>
+        public static string PatientInContext(this IPrincipal me)
+        {
+            if (me is ClaimsPrincipal cp)
+            {
+                var cPatientId = cp.FindFirst("patient");
+                if (cPatientId != null)
+                {
+                    return cPatientId.Value;
+                }
+            }
+            return null;
+        }
+
         public static ClaimsPrincipal ToPrincipal(this IFhirSmartAppContext context, SmartApplicationDetails appDetails, string jwt)
         {
-            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var handler = new JwtSecurityTokenHandler();
             var token = handler.ReadJwtToken(jwt);
             var claims = new[]
             {
