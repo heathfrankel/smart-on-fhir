@@ -18,7 +18,7 @@ namespace EHRApp
         {
             get
             {
-                return (_fhirClient = _fhirClient ?? new FhirClient(Globals.ApplicationSettings.FhirBaseUrl));
+                return (_fhirClient = _fhirClient ?? new FhirClient(Program._baseAddress ?? Globals.ApplicationSettings.FhirBaseUrl));
             }
         }
         

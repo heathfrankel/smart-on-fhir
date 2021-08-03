@@ -35,6 +35,7 @@ namespace EHRApp
                 
                 toolsMenu.DropDownItems.Add(toolbarItem);
             }
+            DisplayOutput($"Demo FHIR Server at {Program._baseAddress}");
         }
 
         private void ShowNewForm(object sender, EventArgs e)
@@ -112,7 +113,7 @@ namespace EHRApp
                 {
                     PatientForm patientForm = new PatientForm();
                     patientForm.MdiParent = this;
-                    patientForm.WindowState = FormWindowState.Maximized;
+                    // patientForm.WindowState = FormWindowState.Maximized;
                     patientForm.SetPatient(patient);
                     patientForm.Show();
                 }
@@ -143,7 +144,7 @@ namespace EHRApp
             context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("practitionerrole", Globals.ApplicationSettings.practitionerrole));
 
             // And the custom NASH Public key for Australian usage
-            context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("X-NASH-Public-Cert", EHRApp.SMARTForm.GetNashPublicKey()));
+            // context.ContextProperties.Add(new System.Collections.Generic.KeyValuePair<string, string>("X-NASH-Public-Cert", EHRApp.SMARTForm.GetNashPublicKey()));
 
             // And the other User data
             context.PractitionerName = "Test Doctor Name"; // read this from the practitioner instead

@@ -30,13 +30,6 @@ namespace EHRApp
             base.OnClosed(e);
         }
 
-        public static IConfigurationRoot Configuration()
-        {
-            return new ConfigurationBuilder()
-                           .SetBasePath(Directory.GetCurrentDirectory())
-                           .AddJsonFile("appsettings.json", optional: false).Build();
-        }
-
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
@@ -54,6 +47,7 @@ namespace EHRApp
             _browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
             _browser.IsBrowserInitializedChanged += _browser_IsBrowserInitializedChanged;
             _browser.LoadError += _browser_LoadError;
+            // _browser.DownloadHandler = new IDownloadHandler
 
             string bitness = Environment.Is64BitProcess ? "x64" : "x86";
             string version = $"Chromium: {Cef.ChromiumVersion}, CEF: {Cef.CefVersion}, Environment: {Cef.CefSharpVersion}";
