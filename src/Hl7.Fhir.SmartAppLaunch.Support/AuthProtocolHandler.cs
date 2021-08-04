@@ -187,12 +187,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             }
 
             // Grab the id_token if it's required
-            string id_token = null;
-            if ((_context.Scopes.Contains("fhirUser") || _context.Scopes.Contains("profile")) && _context.Scopes.Contains("openid"))
-            {
-                // Need to also include the id_token
-                id_token = _context.GetIdToken(_app);
-            }
+            string id_token = _context.GetIdToken(_app);
 
             // All has been validated correctly, so we can return the token response
             _context.ExpiresAt = DateTimeOffset.Now.AddSeconds(3600);
@@ -200,11 +195,15 @@ namespace Hl7.Fhir.SmartAppLaunch
             TokenResponse responseToken = new TokenResponse()
             {
                 access_token = _context.Bearer,
-                id_token = id_token,
                 token_type = "Bearer",
                 expires_in = 3600,
                 scope = _context.Scopes,
             };
+            // Need to also include the id_token
+            if ((_context.Scopes.Contains("fhirUser") || _context.Scopes.Contains("profile")) && _context.Scopes.Contains("openid"))
+                responseToken.id_token = id_token;
+
+            // And the other context properties
             responseToken.patient = _context.ContextProperties.FirstOrDefault(p => p.Key == "patient").Value;
             responseToken.encounter = _context.ContextProperties.FirstOrDefault(p => p.Key == "encounter").Value;
             responseToken.episodeofcare = _context.ContextProperties.FirstOrDefault(p => p.Key == "episodeofcare").Value;

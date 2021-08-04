@@ -156,14 +156,14 @@ namespace Hl7.Fhir.SmartAppLaunch
                                     var scopeRead = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.read);
                                     if (scopeRead?.ReadAccess == false)
                                     {
-                                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User.Identity.Name}/App {_app.Name} does not have read access on {resourceType}");
+                                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have read access on {resourceType}");
                                         return CefReturnValue.Continue;
                                     }
                                     if (resourceType == "Patient")
                                     {
                                         if (requestDetails.User.PatientInContext() != ri.Id)
                                         {
-                                            SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User.Identity.Name}/App {_app.Name} does not have access to {resourceType}/{ri.Id}");
+                                            SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have access to {resourceType}/{ri.Id}");
                                             return CefReturnValue.Continue;
                                         }
                                     }
