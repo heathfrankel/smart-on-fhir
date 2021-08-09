@@ -262,7 +262,6 @@
     <PackageReference Include="CefSharp.WinForms">
       <Version>91.1.211</Version>
     </PackageReference>
-    <PackageReference Include="ComCare.FhirServer.Models" Version="1.0.3" />
     <PackageReference Include="Hl7.Fhir.R4">
       <Version>1.9.0</Version>
     </PackageReference>
