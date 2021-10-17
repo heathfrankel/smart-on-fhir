@@ -75,7 +75,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                 }
 
                 // This is a regular request
-                Hl7.Fhir.Rest.FhirClient server = new Hl7.Fhir.Rest.FhirClient(_externalFhirServerBaseUrl);
+                var server = new Rest.Legacy.LegacyFhirClient(_externalFhirServerBaseUrl, new Rest.FhirClientSettings() { PreferredFormat = Rest.ResourceFormat.Json });
                 server.OnAfterResponse += (sender, args) =>
                 {
                     base.Charset = args.RawResponse.CharacterSet;
@@ -85,7 +85,6 @@ namespace Hl7.Fhir.SmartAppLaunch
                             base.Headers.Add(header, args.RawResponse.Headers[header]);
                     }
                 };
-                server.PreferredFormat = Hl7.Fhir.Rest.ResourceFormat.Json;
                 string redirectedUrl = server.Endpoint.OriginalString.TrimEnd('/') + uri.PathAndQuery;
                 System.Diagnostics.Trace.WriteLine($"{redirectedUrl}");
                 if (request.Method == "GET")
