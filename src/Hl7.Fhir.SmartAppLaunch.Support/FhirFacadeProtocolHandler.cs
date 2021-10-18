@@ -1,23 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
 using CefSharp;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Rest;
-using Hl7.Fhir.SmartAppLaunch;
-using Hl7.Fhir.Support;
 using Hl7.Fhir.Utility;
 using Hl7.Fhir.WebApi;
-using Newtonsoft.Json;
 
 namespace Hl7.Fhir.SmartAppLaunch
 {
     public class FhirFacadeProtocolSchemeHandlerFactory<TSP> : FhirBaseProtocolSchemeHandlerFactory, ISchemeHandlerFactory
-        where TSP: class
+        where TSP : class
     {
         public FhirFacadeProtocolSchemeHandlerFactory(SmartSessions sessionManager, string fhirServerBaseUrl, string identityServerBaseUrl, Func<IFhirSystemServiceR4<TSP>> facadeFactory, bool applySmartScopes = false)
             : base(sessionManager, fhirServerBaseUrl, identityServerBaseUrl)
@@ -131,7 +126,7 @@ namespace Hl7.Fhir.SmartAppLaunch
 
                     if (!uri.LocalPath.StartsWith("/$") && !uri.LocalPath.StartsWith("/_") && uri.LocalPath.Length > 2)
                     {
-                        // This is not an operation or history, so it must be a resource type
+                        // This is not a system operation or history, so it must be a resource type
                         string resourceType = uri.LocalPath.Substring(1);
                         if (resourceType.Contains("/"))
                             resourceType = resourceType.Substring(0, resourceType.IndexOf("/"));
@@ -205,7 +200,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                                 var scopeSearch = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.search);
                                 if (scopeSearch?.SearchAccess == false)
                                 {
-                                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User.Identity.Name}/App {_app.Name} does not have search access on {resourceType}");
+                                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have search access on {resourceType}");
                                     return CefReturnValue.Continue;
                                 }
                                 if (scopeSearch?.SmartUserType == SmartUserType.patient)
@@ -242,12 +237,12 @@ namespace Hl7.Fhir.SmartAppLaunch
                         }
 
                         // This was not a recognized GET request, so we can just respond with a 404
-                        SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported system level GET operation");
+                        SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported GET operation");
                         return CefReturnValue.Continue;
                     }
 
                     // This was not a recognized GET request, so we can just respond with a 404
-                    SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported GET operation");
+                    SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported system level GET operation");
                     return CefReturnValue.Continue;
                 }
                 if (request.Method == "POST")
