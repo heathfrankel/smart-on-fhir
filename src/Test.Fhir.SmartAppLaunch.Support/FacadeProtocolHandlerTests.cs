@@ -148,7 +148,7 @@ namespace Test.Fhir.SmartAppLaunch.Support
         [TestMethod]
         public void ReadCapabilityStatement()
         {
-            string requestPath = "";
+            string requestPath = "metadata";
             string bearer = null;
 
             SmartApplicationDetails appDetails = GetSmartAppDetails();
@@ -182,6 +182,76 @@ namespace Test.Fhir.SmartAppLaunch.Support
             Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
             Assert.AreEqual("application/fhir+json", response.MimeType);
             Assert.IsInstanceOfType(resultResource, typeof(Patient));
+        }
+
+        [TestMethod]
+        public void PatientInstanceOperation()
+        {
+            string requestPath = "Patient/example/$send-activation-code";
+            string bearer = Guid.NewGuid().ToFhirId();
+
+            SmartApplicationDetails appDetails = GetSmartAppDetails();
+            IFhirSmartAppContext smartAppContext = GetSmartAppUserContext(bearer);
+            (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
+
+            string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(OperationOutcome));
+        }
+
+        [TestMethod]
+        public void ReadPatientByVersion()
+        {
+            string requestPath = "Patient/example/_history/1";
+            string bearer = Guid.NewGuid().ToFhirId();
+
+            SmartApplicationDetails appDetails = GetSmartAppDetails();
+            IFhirSmartAppContext smartAppContext = GetSmartAppUserContext(bearer);
+            (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
+
+            string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Patient));
+        }
+
+        [TestMethod]
+        public void DeletePatient()
+        {
+            string requestPath = "Patient";
+            string bearer = Guid.NewGuid().ToFhirId();
+
+            SmartApplicationDetails appDetails = GetSmartAppDetails();
+            IFhirSmartAppContext smartAppContext = GetSmartAppUserContext(bearer);
+            (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
+
+            var patient = new Patient() { Gender = AdministrativeGender.Male, BirthDate = "2000-01-01" };
+            patient.Name.Add(new HumanName() { Text = "Mr John Citizen" });
+            string patientJson = new FhirJsonSerializer().SerializeToString(patient);
+            string resultContent = PerformPostOrPutRequest(requestPath, bearer, appDetails, smartAppContext, "POST", "application/fhir+json", patientJson, 1, out MockResponse response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Patient));
+            var patientCreated = resultResource as Patient;
+            Assert.IsNotNull(patientCreated.Id);
+
+            requestPath = "Patient/"+ patientCreated.Id;
+            resultContent = PerformPostOrPutRequest(requestPath, bearer, appDetails, smartAppContext, "DELETE", null, null, 5, out response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
         }
 
         [TestMethod]
@@ -225,15 +295,93 @@ namespace Test.Fhir.SmartAppLaunch.Support
         }
 
         [TestMethod]
+        public void CountPatients()
+        {
+            string requestPath = "Patient/$count-em";
+            string bearer = Guid.NewGuid().ToFhirId();
+
+            SmartApplicationDetails appDetails = GetSmartAppDetails();
+            IFhirSmartAppContext smartAppContext = GetSmartAppUserContext(bearer);
+            (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
+
+            string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(OperationOutcome));
+        }
+
+        [TestMethod]
+        public void CountEmAll()
+        {
+            string requestPath = "$count-em";
+            string bearer = Guid.NewGuid().ToFhirId();
+
+            SmartApplicationDetails appDetails = GetSmartAppDetails();
+            IFhirSmartAppContext smartAppContext = GetSmartAppUserContext(bearer);
+            (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
+
+            string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(OperationOutcome));
+        }
+
+        [TestMethod]
         public void CreatePatient()
         {
+            string requestPath = "Patient";
+            string bearer = Guid.NewGuid().ToFhirId();
 
+            SmartApplicationDetails appDetails = GetSmartAppDetails();
+            IFhirSmartAppContext smartAppContext = GetSmartAppUserContext(bearer);
+            (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
+
+            var patient = new Patient() { Gender = AdministrativeGender.Male, BirthDate = "2000-01-01" };
+            patient.Name.Add(new HumanName() { Text = "Mr John Citizen" });
+            string patientJson = new FhirJsonSerializer().SerializeToString(patient);
+            string resultContent = PerformPostOrPutRequest(requestPath, bearer, appDetails, smartAppContext, "POST", "application/fhir+json", patientJson, 1, out MockResponse response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Patient));
+            var patientCreated = resultResource as Patient;
+            Assert.IsNotNull(patientCreated.Id);
         }
 
         [TestMethod]
         public void UpdatePatient()
         {
+            string requestPath = "Patient/42";
+            string bearer = Guid.NewGuid().ToFhirId();
 
+            SmartApplicationDetails appDetails = GetSmartAppDetails();
+            IFhirSmartAppContext smartAppContext = GetSmartAppUserContext(bearer);
+            (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
+
+            var patient = new Patient() { Id = "42", Gender = AdministrativeGender.Male, BirthDate = "2000-01-01" };
+            patient.Name.Add(new HumanName() { Text = "Mr John Citizen" });
+            string patientJson = new FhirJsonSerializer().SerializeToString(patient);
+            string resultContent = PerformPostOrPutRequest(requestPath, bearer, appDetails, smartAppContext, "PUT", "application/fhir+json", patientJson, 1, out MockResponse response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Patient));
+            var patientCreated = resultResource as Patient;
+            Assert.IsNotNull(patientCreated.Id);
         }
 
         [TestMethod]
@@ -320,6 +468,39 @@ namespace Test.Fhir.SmartAppLaunch.Support
             Assert.IsInstanceOfType(resultResource, typeof(OperationOutcome));
         }
 
+        [TestMethod]
+        public void SearchBundle()
+        {
+            string requestPath = "";
+            string bearer = Guid.NewGuid().ToFhirId();
+
+            SmartApplicationDetails appDetails = GetSmartAppDetails();
+            IFhirSmartAppContext smartAppContext = GetSmartAppUserContext(bearer);
+            (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
+
+            var searchBundle = new Bundle() { Id="PrepopQuery", Type = Bundle.BundleType.Batch};
+            searchBundle.Entry.Add(new Bundle.EntryComponent()
+            {
+                FullUrl = "urn:uuid:" + Guid.NewGuid().ToFhirId(),
+                Request = new Bundle.RequestComponent() 
+                {
+                    Method = Bundle.HTTPVerb.GET,
+                    Url = "DocumentReference?patient=2034921"
+                }
+            });
+            string patientJson = new FhirJsonSerializer().SerializeToString(searchBundle);
+            string resultContent = PerformPostOrPutRequest(requestPath, bearer, appDetails, smartAppContext, "POST", "application/fhir+json", patientJson, 1, out MockResponse response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Bundle));
+            var resultBundle = resultResource as Bundle;
+            Assert.AreEqual(1, resultBundle.Entry.Count);
+        }
+
         private string PerformPostOrPutRequest(string requestPath, string bearer, SmartApplicationDetails appDetails, IFhirSmartAppContext smartAppContext, string method, string contentType, string content, long sessionIdentifier, out MockResponse response)
         {
             _mgr.RegisterSession(sessionIdentifier, appDetails, smartAppContext);
@@ -333,11 +514,14 @@ namespace Test.Fhir.SmartAppLaunch.Support
                 Method = method,
                 Url = $"{baseUrl}/{requestPath}",
             };
-            request.SetHeaderByName("Content-Type", contentType, true);
-            request.InitializePostData();
-            var element = request.PostData.CreatePostDataElement();
-            element.Bytes = System.Text.UTF8Encoding.UTF8.GetBytes(content);
-            request.PostData.AddElement(element);
+            if (!string.IsNullOrEmpty(content))
+            {
+                request.SetHeaderByName("Content-Type", contentType, true);
+                request.InitializePostData();
+                var element = request.PostData.CreatePostDataElement();
+                element.Bytes = System.Text.UTF8Encoding.UTF8.GetBytes(content);
+                request.PostData.AddElement(element);
+            }
             if (!string.IsNullOrEmpty(bearer))
                 request.SetHeaderByName("Authorization", $"Bearer {bearer}", true);
             CefSharp.IFrame frame = new MockFrame(sessionIdentifier);
@@ -357,10 +541,14 @@ namespace Test.Fhir.SmartAppLaunch.Support
                 // call the GetResponse once more to get the final headers?
                 t.GetResponseHeaders(response, out responseLength, out redirectURl);
             }
-            var responseStream = (t as FhirFacadeProtocolSchemeHandler<IServiceProvider>).Stream;
-            responseStream.Seek(0, SeekOrigin.Begin);
-            StreamReader sr = new StreamReader(responseStream);
-            return sr.ReadToEnd();
+            if (responseLength > 0)
+            {
+                var responseStream = (t as FhirFacadeProtocolSchemeHandler<IServiceProvider>).Stream;
+                responseStream.Seek(0, SeekOrigin.Begin);
+                StreamReader sr = new StreamReader(responseStream);
+                return sr.ReadToEnd();
+            }
+            return null;
         }
 
         private string PerformGetRequest(string requestPath, string bearer, SmartApplicationDetails appDetails, IFhirSmartAppContext smartAppContext, long sessionIdentifier, out MockResponse response)

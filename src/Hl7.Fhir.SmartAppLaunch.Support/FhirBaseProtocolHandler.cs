@@ -140,8 +140,11 @@ namespace Hl7.Fhir.SmartAppLaunch
         {
             base.Headers.Add("Cache-Control", "no-store");
             base.Headers.Add("Pragma", "no-cache");
-            base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(resource));
-            base.MimeType = "application/fhir+json";
+            if (resource != null)
+            {
+                base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(resource));
+                base.MimeType = "application/fhir+json";
+            }
             base.StatusCode = (int)status;
 
             if (!callback.IsDisposed)

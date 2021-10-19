@@ -65,7 +65,7 @@ namespace EHRApp
             {
                 sub = (context as SmartAppContext).PractitionerId,
                 name = (context as SmartAppContext).PractitionerName,
-                profile = "https://" + Program.fhirServerAddress + "/Practitioner/" +  (context as SmartAppContext).PractitionerId,
+                profile = "https://" + Program.fhirServerAddress + "/Practitioner/" + (context as SmartAppContext).PractitionerId,
                 iss = app.Issuer,
                 aud = app.Audience,
                 exp = creationTime.AddHours(1).ToUnixTime(),

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using CefSharp;
+using CefSharp.DevTools.Network;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Rest;
 using Hl7.Fhir.Utility;
@@ -73,23 +74,13 @@ namespace Hl7.Fhir.SmartAppLaunch
         /// </remarks>
         public override CefReturnValue ProcessRequestAsync(IRequest request, ICallback callback)
         {
-            if (request.Method == "OPTIONS")
-            {
-                return WriteOptionsOutput(callback);
-            }
             var uri = new Uri(request.Url);
             Console.WriteLine($"-----------------\r\n{request.Url}");
 
-            // Check the bearer header (as all calls to this API MUST be provided the bearer token, otherwise are straight rejected)
-            string bearer = request.GetHeaderByName("authorization");
-            if (!string.IsNullOrEmpty(_launchContext.Bearer))
-            {
-                if (bearer != "Bearer " + _launchContext.Bearer)
-                {
-                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "Invalid Bearer token provided for this request");
-                    return CefReturnValue.Continue;
-                }
-            }
+            // Raw Options request
+            if (request.Method == "OPTIONS" && uri.LocalPath != "/")
+                return WriteOptionsOutput(callback);
+
             // TODO: Check that the session hasn't expired (not critical as the window is within the control of the PMS system)
             //if (_launchContext.ExpiresAt < DateTimeOffset.Now) 
             //{
@@ -97,212 +88,168 @@ namespace Hl7.Fhir.SmartAppLaunch
             //    return CefReturnValue.Continue;
             //}
 
+            // This is a regular FHIR request
+            var headers = new List<KeyValuePair<string, IEnumerable<string>>>();
+            foreach (var key in request.Headers?.AllKeys)
+            {
+                headers.Add(new KeyValuePair<string, IEnumerable<string>>(key, request.Headers.GetValues(key)));
+            }
+            ModelBaseInputs<TSP> requestDetails = new ModelBaseInputs<TSP>(_launchContext.Principal, null, request.Method, uri, new Uri($"https://{_fhirServerBaseUrl}"), null, headers, null);
+
+            var rtParser = new FhirRequestTypeParser();
+            var rt = rtParser.ParseRequestType(request.Method, request.Url, request.GetHeaderByName("Content-Type"));
+
+            // Check for security required
+            if (rt != FhirRequestTypeParser.FhirRequestType.Unknown
+                && rt != FhirRequestTypeParser.FhirRequestType.UnknownResourceType
+                && rt != FhirRequestTypeParser.FhirRequestType.SmartConfiguration
+                && rt != FhirRequestTypeParser.FhirRequestType.CapabilityStatement)
+            {
+                // Check the bearer header (as all calls to this API MUST be provided the bearer token, otherwise are straight rejected)
+                string bearer = request.GetHeaderByName("authorization");
+                if (string.IsNullOrEmpty(bearer))
+                {
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "No Bearer token provided for this request");
+                    return CefReturnValue.Continue;
+                }
+                if (bearer != "Bearer " + _launchContext.Bearer)
+                {
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "Invalid Bearer token provided for this request");
+                    return CefReturnValue.Continue;
+                }
+            }
+            IFhirResourceServiceR4<TSP> rs = null;
+            if (!string.IsNullOrEmpty(rtParser.ResourceType))
+            {
+                rs = _facade.GetResourceService(requestDetails, rtParser.ResourceType);
+                if (rs == null)
+                {
+                    SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, $"Resource type {rtParser.ResourceType} is not supported");
+                    return CefReturnValue.Continue;
+                }
+            }
             try
             {
-                // This is a regular FHIR request
-                var headers = new List<KeyValuePair<string, IEnumerable<string>>>();
-                foreach (var key in request.Headers?.AllKeys)
-                {
-                    headers.Add(new KeyValuePair<string, IEnumerable<string>>(key, request.Headers.GetValues(key)));
-                }
-                ModelBaseInputs<TSP> requestDetails = new ModelBaseInputs<TSP>(_launchContext.Principal, null, request.Method, uri, new Uri($"https://{_fhirServerBaseUrl}"), null, headers, null);
-                if (request.Method == "GET")
-                {
-                    // The metadata routes are the only ones that are permitted without the bearer token
-                    if (uri.LocalPath == "/.well-known/smart-configuration")
-                    {
-                        return ProcessWellKnownSmartConfigurationRequest(callback);
-                    }
-                    if (uri.LocalPath == "/metadata" || uri.LocalPath == "/")
-                    {
-                        return ProcessFhirMetadataRequest(callback, requestDetails);
-                    }
 
-                    if (string.IsNullOrEmpty(bearer))
+                // For queries that leverage the summary parameter (that's on the URL)
+                var summary = GetSummaryParameter(uri);
+                var parameters = TupledParameters(uri, SearchQueryParameterNames).ToList(); // convert to a list so that we can append the patient ID when required
+                int? pagesize = GetIntParameter(uri, FhirParameter.COUNT);
+                Resource postedResource = null;
+                if (request.PostData != null)
+                {
+                    var data = request.PostData.Elements.FirstOrDefault();
+                    var body = data.GetBody();
+                    if (request.GetHeaderByName("Content-Type").Contains("application/x-www-form-urlencoded"))
                     {
-                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "No Bearer token provided for this request");
-                        return CefReturnValue.Continue;
-                    }
-
-                    if (!uri.LocalPath.StartsWith("/$") && !uri.LocalPath.StartsWith("/_") && uri.LocalPath.Length > 2)
-                    {
-                        // This is not a system operation or history, so it must be a resource type
-                        string resourceType = uri.LocalPath.Substring(1);
-                        if (resourceType.Contains("/"))
-                            resourceType = resourceType.Substring(0, resourceType.IndexOf("/"));
-                        if (!string.IsNullOrEmpty(resourceType))
+                        // This is the search post style data
+                        System.Collections.Specialized.NameValueCollection nvp = System.Web.HttpUtility.ParseQueryString(body);
+                        if (nvp.HasKeys())
                         {
-                            var rs = _facade.GetResourceService(requestDetails, resourceType);
-                            if (rs == null)
+                            foreach (string key in nvp.Keys)
                             {
-                                SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, $"Resource type {resourceType} is not supported");
-                                return CefReturnValue.Continue;
-                            }
-                            // For queries that leverage the summary parameter (that's on the URL
-                            var summary = GetSummaryParameter(uri);
-
-                            // GET for a specific resource
-                            ResourceIdentity ri = new ResourceIdentity(uri);
-                            if (ri.IsRestResourceIdentity() && !string.IsNullOrEmpty(ri.Id))
-                            {
-                                // Check that this is within the smart context
-                                if (_applySmartScopes)
+                                foreach (string val in nvp.GetValues(key))
                                 {
-                                    var scopeRead = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.read);
-                                    if (scopeRead?.ReadAccess == false)
+                                    if (key == FhirParameter.COUNT)
                                     {
-                                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have read access on {resourceType}");
-                                        return CefReturnValue.Continue;
-                                    }
-                                    if (resourceType == "Patient")
-                                    {
-                                        if (requestDetails.User.PatientInContext() != ri.Id 
-                                            && !(scopeRead.SmartUserType == SmartUserType.user
-                                            || scopeRead.SmartUserType == SmartUserType.system))
+                                        if (!pagesize.HasValue)
                                         {
-                                            SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have access to {resourceType}/{ri.Id}");
-                                            return CefReturnValue.Continue;
+                                            int n;
+                                            if (int.TryParse(key, out n))
+                                                pagesize = n;
                                         }
                                     }
-                                }
-                                System.Threading.Tasks.Task.Run(() => rs.Get(ri.Id, ri.VersionId, summary).ContinueWith(r =>
-                                {
-                                    if (r.Exception != null)
+                                    else if (key == FhirParameter.SUMMARY)
                                     {
-                                        SetErrorResponse(callback, r.Exception);
-                                        return null;
-                                    }
-                                    if (r.Result == null)
-                                    {
-                                        SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotFound, $"Resource {resourceType}/{ri.Id} was not found");
-                                        return null;
+                                        switch (val.ToLower())
+                                        {
+                                            case "true": summary = SummaryType.True; break;
+                                            case "false": summary = Hl7.Fhir.Rest.SummaryType.False; break;
+                                            case "text": summary = SummaryType.Text; break;
+                                            case "data": summary = SummaryType.Data; break;
+                                            case "count": summary = SummaryType.Count; break;
+                                        }
                                     }
                                     else
                                     {
-                                        // Check for security access to this resource before returning it
-                                        if (resourceType != "Patient")
-                                        {
-                                            // This will need to be done by the Model classes, not the facade
-                                        }
-
-                                        // All good return the resource
-                                        var statusCode = r.Result?.HasAnnotation<HttpStatusCode>() == true ? r.Result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
-                                        SetResponse(callback, statusCode, r.Result);
-                                    }
-                                    return r.Result;
-                                }));
-                                return CefReturnValue.ContinueAsync;
-                            }
-
-                            // Search for the resource type
-                            var parameters = TupledParameters(uri, SearchQueryParameterNames).ToList(); // convert to a list so that we can append the patient ID when required
-                            int? pagesize = GetIntParameter(uri, FhirParameter.COUNT);
-                            if (_applySmartScopes)
-                            {
-                                var scopeSearch = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.search);
-                                if (scopeSearch?.SearchAccess == false)
-                                {
-                                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have search access on {resourceType}");
-                                    return CefReturnValue.Continue;
-                                }
-                                if (scopeSearch?.SmartUserType == SmartUserType.patient)
-                                {
-                                    if (!string.IsNullOrEmpty(requestDetails.User.PatientInContext()))
-                                    {
-                                        if (resourceType == "Patient")
-                                        {
-                                            parameters.Add(new KeyValuePair<string, string>("_id", requestDetails.User.PatientInContext()));
-                                        }
-                                        else if (Hl7.Fhir.Model.ModelInfo.SearchParameters.Any(sp => sp.Resource == resourceType && sp.Name == "patient"))
-                                        {
-                                            parameters.Add(new KeyValuePair<string, string>("patient", requestDetails.User.PatientInContext()));
-                                        }
-                                        else if (Hl7.Fhir.Model.ModelInfo.SearchParameters.Any(sp => sp.Resource == resourceType && sp.Name == "subject"))
-                                        {
-                                            parameters.Add(new KeyValuePair<string, string>("subject", requestDetails.User.PatientInContext()));
-                                        }
+                                        parameters.Add(new KeyValuePair<string, string>(key, val));
                                     }
                                 }
                             }
-                            System.Threading.Tasks.Task.Run(() => rs.Search(parameters, pagesize, summary).ContinueWith(r =>
-                            {
-                                if (r.Exception != null)
-                                {
-                                    SetErrorResponse(callback, r.Exception);
-                                    return null;
-                                }
-                                var statusCode = r.Result.HasAnnotation<HttpStatusCode>() ? r.Result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
-                                SetResponse(callback, statusCode, r.Result);
-                                return r.Result;
-                            }));
-                            return CefReturnValue.ContinueAsync;
                         }
-
-                        // This was not a recognized GET request, so we can just respond with a 404
-                        SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported GET operation");
-                        return CefReturnValue.Continue;
                     }
-
-                    // This was not a recognized GET request, so we can just respond with a 404
-                    SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported system level GET operation");
-                    return CefReturnValue.Continue;
+                    else if (request.GetHeaderByName("Content-Type").Contains("xml"))
+                        postedResource = new Hl7.Fhir.Serialization.FhirXmlParser().Parse<Resource>(body);
+                    else
+                        postedResource = new Hl7.Fhir.Serialization.FhirJsonParser().Parse<Resource>(body);
                 }
-                if (request.Method == "POST")
+
+                switch (rt)
                 {
-                    if (string.IsNullOrEmpty(bearer))
-                    {
-                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "No Bearer token provided for this request");
+                    case FhirRequestTypeParser.FhirRequestType.Unknown:
+                        SetErrorResponse(callback, HttpStatusCode.BadRequest, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, $"Unsupported request {request.Method} {uri.LocalPath}");
                         return CefReturnValue.Continue;
-                    }
-                    if (uri.LocalPath == "/")
-                    {
-                        Bundle b = null;
-                        if (request.PostData != null)
+
+                    case FhirRequestTypeParser.FhirRequestType.UnknownResourceType:
+                        SetErrorResponse(callback, HttpStatusCode.BadRequest, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, $"Unsupported Resource Type in request: {request.Method} {uri.LocalPath}");
+                        return CefReturnValue.Continue;
+
+                    case FhirRequestTypeParser.FhirRequestType.SystemHistory:
+                    case FhirRequestTypeParser.FhirRequestType.SystemSearch:
+                    case FhirRequestTypeParser.FhirRequestType.ResourceTypeHistory:
+                    case FhirRequestTypeParser.FhirRequestType.ResourceInstancePatch:
+                    case FhirRequestTypeParser.FhirRequestType.ResourceInstanceHistory:
+                        SetErrorResponse(callback, HttpStatusCode.BadRequest, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, $"Unsupported request {request.Method} {uri.LocalPath}");
+                        return CefReturnValue.Continue;
+
+                    // ----------------------------------------------------------------------------------------------
+                    case FhirRequestTypeParser.FhirRequestType.SmartConfiguration:
+                        return ProcessWellKnownSmartConfigurationRequest(callback);
+
+                    case FhirRequestTypeParser.FhirRequestType.CapabilityStatement:
+                        if (request.Method == "OPTIONS")
                         {
-                            var data = request.PostData.Elements.FirstOrDefault();
-                            var body = data.GetBody();
-                            if (request.GetHeaderByName("Content-Type").Contains("xml"))
-                                b = new Hl7.Fhir.Serialization.FhirXmlParser().Parse<Bundle>(body);
-                            else
-                                b = new Hl7.Fhir.Serialization.FhirJsonParser().Parse<Bundle>(body);
+                            // base.Headers.Add("Access-Control-Allow-Origin", "*");
+                            base.Headers.Add("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
+                            base.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Accept, authorization");
                         }
+                        return ProcessFhirMetadataRequest(callback, requestDetails);
 
-                        System.Threading.Tasks.Task.Run(() => _facade.ProcessBatch(requestDetails, b).ContinueWith(r =>
-                        {
-                            if (r.Exception != null)
-                            {
-                                SetErrorResponse(callback, r.Exception);
-                                return null;
-                            }
-                            var statusCode = r.Result.HasAnnotation<HttpStatusCode>() ? r.Result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
-                            SetResponse(callback, statusCode, r.Result);
-                            return r.Result;
-                        }));
-                        return CefReturnValue.ContinueAsync;
-                    }
+                    case FhirRequestTypeParser.FhirRequestType.SystemBatchOperation:
+                        return ProcessTransactionBundle(callback, requestDetails, postedResource);
 
-                    // TODO: support creating new resources
+                    case FhirRequestTypeParser.FhirRequestType.SystemOperation:
+                        return ProcessSystemOperation(callback, requestDetails, postedResource, rtParser.OperationName, summary);
 
-                    // This was not a recognized POST request, so we can just respond with a 404
-                    SetErrorResponse(callback, HttpStatusCode.BadRequest, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported POST operation");
-                    return CefReturnValue.Continue;
-                }
-                if (request.Method == "PUT")
-                {
-                    if (string.IsNullOrEmpty(bearer))
-                    {
-                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.Security, "No Bearer token provided for this request");
-                        return CefReturnValue.Continue;
-                    }
-                    // TODO: support updating resources (or creating with client allocated ID)
+                    // ----------------------------------------------------------------------------------------------
+                    case FhirRequestTypeParser.FhirRequestType.ResourceTypeSearch:
+                        return ProcessSearchRequest(callback, requestDetails, rs, summary, parameters, pagesize, rtParser.ResourceType);
 
-                    // This was not a recognized PUT request, so we can just respond with a 404
-                    SetErrorResponse(callback, HttpStatusCode.BadRequest, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotSupported, "Unsupported PUT operation");
-                    return CefReturnValue.Continue;
+                    case FhirRequestTypeParser.FhirRequestType.ResourceTypeOperation:
+                        return ProcessResourceTypeOperation(callback, requestDetails, rs, postedResource, rtParser.ResourceType, rtParser.OperationName, summary);
+
+                    case FhirRequestTypeParser.FhirRequestType.ResourceTypeCreate:
+                        return ProcessResourceCreate(request, callback, uri, requestDetails, rs, postedResource, rtParser.ResourceType, rtParser.ResourceId);
+
+                    // ----------------------------------------------------------------------------------------------
+                    case FhirRequestTypeParser.FhirRequestType.ResourceInstanceGet:
+                        return ProcessGetResourceInstance(callback, requestDetails, rs, summary, rtParser.ResourceType, rtParser.ResourceId, rtParser.Version);
+
+                    case FhirRequestTypeParser.FhirRequestType.ResourceInstanceGetVersion:
+                        return ProcessGetResourceInstance(callback, requestDetails, rs, summary, rtParser.ResourceType, rtParser.ResourceId, rtParser.Version);
+
+                    case FhirRequestTypeParser.FhirRequestType.ResourceInstanceUpdate:
+                        return ProcessResourceCreate(request, callback, uri, requestDetails, rs, postedResource, rtParser.ResourceType, rtParser.ResourceId);
+
+                    case FhirRequestTypeParser.FhirRequestType.ResourceInstanceDelete:
+                        return ProcessGetResourceInstanceDelete(callback, requestDetails, rs, summary, rtParser.ResourceType, rtParser.ResourceId);
+
+                    case FhirRequestTypeParser.FhirRequestType.ResourceInstanceOperation:
+                        return ProcessGetResourceInstanceOperation(callback, requestDetails, rs, summary, rtParser.ResourceType, rtParser.ResourceId, rtParser.OperationName, postedResource);
                 }
 
                 // This was an unknown request type
-                SetErrorResponse(callback, HttpStatusCode.BadRequest, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.NotSupported, "Unknown request");
+                SetErrorResponse(callback, HttpStatusCode.BadRequest, OperationOutcome.IssueSeverity.Fatal, OperationOutcome.IssueType.NotSupported, $"Unsupported request: {request.Method}: {uri.LocalPath}");
                 return CefReturnValue.Continue;
             }
             catch (Exception ex)
@@ -313,19 +260,362 @@ namespace Hl7.Fhir.SmartAppLaunch
             }
         }
 
+        private CefReturnValue ProcessTransactionBundle(ICallback callback, ModelBaseInputs<TSP> requestDetails, Resource postedResource)
+        {
+            Bundle b = postedResource as Bundle;
+
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    var result = await _facade.ProcessBatch(requestDetails, b);
+                    var statusCode = result.HasAnnotation<HttpStatusCode>() ? result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                    SetResponse(callback, statusCode, result);
+                }
+                catch (Exception ex)
+                {
+                    SetErrorResponse(callback, ex);
+                }
+            });
+            return CefReturnValue.ContinueAsync;
+        }
+
+        private CefReturnValue ProcessSystemOperation(ICallback callback, ModelBaseInputs<TSP> requestDetails, Resource postedResource, string operationName, SummaryType summary)
+        {
+            // Check that this is within the smart context
+            if (_applySmartScopes)
+            {
+                var scopeRead = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, "system", SmartOperation.search);
+                if (scopeRead?.SearchAccess == false)
+                {
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User.Identity.Name}/App {_app.Name} does not have system search access");
+                    return CefReturnValue.Continue;
+                }
+            }
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    var parameters = postedResource as Parameters;
+                    if (parameters == null && postedResource != null)
+                    {
+                        parameters = new Parameters();
+                        parameters.Parameter.Add(new Parameters.ParameterComponent() { Name = "resource", Resource = postedResource });
+                    }
+                    var result = await _facade.PerformOperation(requestDetails, operationName, parameters, summary);
+                    if (result == null)
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.InternalServerError, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Unknown, $"System operation {operationName} had no result");
+                        return;
+                    }
+                    // All good return the resource
+                    var statusCode = result?.HasAnnotation<HttpStatusCode>() == true ? result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                    SetResponse(callback, statusCode, result);
+                }
+                catch (Exception ex)
+                {
+                    SetErrorResponse(callback, ex);
+                }
+            });
+            return CefReturnValue.ContinueAsync;
+        }
+
+        private CefReturnValue ProcessResourceTypeOperation(ICallback callback, ModelBaseInputs<TSP> requestDetails, IFhirResourceServiceR4<TSP> rs, Resource postedResource, string resourceType, string operationName, SummaryType summary)
+        {
+            // Check that this is within the smart context
+            if (_applySmartScopes)
+            {
+                var scopeRead = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.search);
+                if (scopeRead?.SearchAccess == false)
+                {
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User.Identity.Name}/App {_app.Name} does not have search access on {resourceType}");
+                    return CefReturnValue.Continue;
+                }
+            }
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    var parameters = postedResource as Parameters;
+                    if (parameters == null && postedResource != null)
+                    {
+                        parameters = new Parameters();
+                        parameters.Parameter.Add(new Parameters.ParameterComponent() { Name = "resource", Resource = postedResource });
+                    }
+                    var result = await rs.PerformOperation(operationName, parameters, summary);
+                    if (result == null)
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.InternalServerError, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Unknown, $"Resource operation {resourceType}/{operationName} had no result");
+                        return;
+                    }
+                    // All good return the resource
+                    var statusCode = result?.HasAnnotation<HttpStatusCode>() == true ? result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                    SetResponse(callback, statusCode, result);
+                }
+                catch (Exception ex)
+                {
+                    SetErrorResponse(callback, ex);
+                }
+            });
+            return CefReturnValue.ContinueAsync;
+        }
+
+        private CefReturnValue ProcessResourceCreate(IRequest request, ICallback callback, Uri uri, ModelBaseInputs<TSP> requestDetails, IFhirResourceServiceR4<TSP> rs, Resource postedResource, string resourceType, string resourceId)
+        {
+            // Check that this is within the smart context
+            if (_applySmartScopes)
+            {
+                var scopeRead = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.create);
+                if (scopeRead?.CreateAccess == false)
+                {
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User.Identity.Name}/App {_app.Name} does not have create access on {resourceType}");
+                    return CefReturnValue.Continue;
+                }
+                if (resourceType == "Patient")
+                {
+                    if (requestDetails.User.PatientInContext() != resourceId && scopeRead.SmartUserType != SmartUserType.user)
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User.Identity.Name}/App {_app.Name} does not have access to {resourceType}/{resourceId}");
+                        return CefReturnValue.Continue;
+                    }
+                }
+            }
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    var result = await rs.Create(postedResource, uri.Query, request.GetHeaderByName("If-None-Exist"), null);
+                    if (result == null)
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.InternalServerError, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Unknown, $"Resource create had no result");
+                        return;
+                    }
+                    // All good return the resource
+                    var statusCode = result?.HasAnnotation<HttpStatusCode>() == true ? result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                    SetResponse(callback, statusCode, result);
+                }
+                catch (Exception ex)
+                {
+                    SetErrorResponse(callback, ex);
+                }
+            });
+            return CefReturnValue.ContinueAsync;
+        }
+
+        private CefReturnValue ProcessSearchRequest(ICallback callback, ModelBaseInputs<TSP> requestDetails, IFhirResourceServiceR4<TSP> rs, SummaryType summary, List<KeyValuePair<string, string>> parameters, int? pagesize, string resourceType)
+        {
+            if (_applySmartScopes)
+            {
+                var scopeSearch = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.search);
+                if (scopeSearch?.SearchAccess == false)
+                {
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have search access on {resourceType}");
+                    return CefReturnValue.Continue;
+                }
+                if (scopeSearch?.SmartUserType == SmartUserType.patient)
+                {
+                    if (!string.IsNullOrEmpty(requestDetails.User.PatientInContext()))
+                    {
+                        if (resourceType == "Patient")
+                        {
+                            parameters.Add(new KeyValuePair<string, string>("_id", requestDetails.User.PatientInContext()));
+                        }
+                        else if (Hl7.Fhir.Model.ModelInfo.SearchParameters.Any(sp => sp.Resource == resourceType && sp.Name == "patient"))
+                        {
+                            parameters.Add(new KeyValuePair<string, string>("patient", requestDetails.User.PatientInContext()));
+                        }
+                        else if (Hl7.Fhir.Model.ModelInfo.SearchParameters.Any(sp => sp.Resource == resourceType && sp.Name == "subject"))
+                        {
+                            parameters.Add(new KeyValuePair<string, string>("subject", requestDetails.User.PatientInContext()));
+                        }
+                    }
+                }
+            }
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    var result = await rs.Search(parameters, pagesize, summary);
+                    var statusCode = result.HasAnnotation<HttpStatusCode>() ? result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                    SetResponse(callback, statusCode, result);
+                }
+                catch (Exception ex)
+                {
+                    SetErrorResponse(callback, ex);
+                }
+            });
+            return CefReturnValue.ContinueAsync;
+        }
+
+        private CefReturnValue ProcessGetResourceInstance(ICallback callback, ModelBaseInputs<TSP> requestDetails, IFhirResourceServiceR4<TSP> rs, SummaryType summary, string resourceType, string resourceId, string version)
+        {
+            // Check that this is within the smart context
+            if (_applySmartScopes)
+            {
+                var scopeRead = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.read);
+                if (scopeRead?.ReadAccess == false)
+                {
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have read access on {resourceType}");
+                    return CefReturnValue.Continue;
+                }
+                if (resourceType == "Patient")
+                {
+                    if (requestDetails.User.PatientInContext() != resourceId
+                        && !(scopeRead.SmartUserType == SmartUserType.user
+                        || scopeRead.SmartUserType == SmartUserType.system))
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have access to {resourceType}/{resourceId}");
+                        return CefReturnValue.Continue;
+                    }
+                }
+            }
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    var result = await rs.Get(resourceId, version, summary);
+                    if (result == null)
+                    {
+                        if (!string.IsNullOrEmpty(version))
+                            SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotFound, $"Resource {resourceType}/{resourceId}/_history/{version} was not found");
+                        else
+                            SetErrorResponse(callback, HttpStatusCode.NotFound, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.NotFound, $"Resource {resourceType}/{resourceId} was not found");
+                        return;
+                    }
+                    // Check for security access to this resource before returning it
+                    if (resourceType != "Patient")
+                    {
+                        // This will need to be done by the Model classes, not the facade
+                    }
+
+                    // All good return the resource
+                    var statusCode = result?.HasAnnotation<HttpStatusCode>() == true ? result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                    SetResponse(callback, statusCode, result);
+                }
+                catch (Exception ex)
+                {
+                    SetErrorResponse(callback, ex);
+                }
+            });
+            return CefReturnValue.ContinueAsync;
+        }
+
+        private CefReturnValue ProcessGetResourceInstanceOperation(ICallback callback, ModelBaseInputs<TSP> requestDetails, IFhirResourceServiceR4<TSP> rs, SummaryType summary, string resourceType, string resourceId, string OperationName, Resource postedResource)
+        {
+            // Check that this is within the smart context
+            if (_applySmartScopes)
+            {
+                var scopeRead = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.read);
+                if (scopeRead?.ReadAccess == false)
+                {
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have read access on {resourceType}");
+                    return CefReturnValue.Continue;
+                }
+                if (resourceType == "Patient")
+                {
+                    if (requestDetails.User.PatientInContext() != resourceId
+                        && !(scopeRead.SmartUserType == SmartUserType.user
+                        || scopeRead.SmartUserType == SmartUserType.system))
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have access to {resourceType}/{resourceId}");
+                        return CefReturnValue.Continue;
+                    }
+                }
+            }
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    var parameters = postedResource as Parameters;
+                    if (parameters == null && postedResource != null)
+                    {
+                        parameters = new Parameters();
+                        parameters.Parameter.Add(new Parameters.ParameterComponent() { Name = "resource", Resource = postedResource });
+                    }
+                    var result = await rs.PerformOperation(resourceId, OperationName, parameters, summary);
+                    if (result == null)
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.InternalServerError, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Unknown, $"Resource operation {resourceType}/{resourceId}/{OperationName} had no result");
+                        return;
+                    }
+                    // Check for security access to this resource before returning it
+                    if (resourceType != "Patient")
+                    {
+                        // This will need to be done by the Model classes, not the facade
+                    }
+
+                    // All good return the resource
+                    var statusCode = result?.HasAnnotation<HttpStatusCode>() == true ? result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
+                    SetResponse(callback, statusCode, result);
+                }
+                catch (Exception ex)
+                {
+                    SetErrorResponse(callback, ex);
+                }
+            });
+            return CefReturnValue.ContinueAsync;
+        }
+
+        private CefReturnValue ProcessGetResourceInstanceDelete(ICallback callback, ModelBaseInputs<TSP> requestDetails, IFhirResourceServiceR4<TSP> rs, SummaryType summary, string resourceType, string resourceId)
+        {
+            // Check that this is within the smart context
+            if (_applySmartScopes)
+            {
+                var scopeDelete = SmartScopes.HasSecureAccess_SmartOnFhir(requestDetails, resourceType, SmartOperation.delete);
+                if (scopeDelete?.ReadAccess == false)
+                {
+                    SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have delete access on {resourceType}");
+                    return CefReturnValue.Continue;
+                }
+                if (resourceType == "Patient")
+                {
+                    if (requestDetails.User.PatientInContext() != resourceId
+                        && !(scopeDelete.SmartUserType == SmartUserType.user
+                        || scopeDelete.SmartUserType == SmartUserType.system))
+                    {
+                        SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have access to {resourceType}/{resourceId}");
+                        return CefReturnValue.Continue;
+                    }
+                }
+            }
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    var result = await rs.Delete(resourceId, null);
+                    if (result == null)
+                    {
+                        SetResponse(callback, HttpStatusCode.OK, null);
+                        return;
+                    }
+
+                    // Resource deleted
+                    SetResponse(callback, HttpStatusCode.NoContent, null);
+                }
+                catch (Exception ex)
+                {
+                    SetErrorResponse(callback, ex);
+                }
+            });
+            return CefReturnValue.ContinueAsync;
+        }
+
         private CefReturnValue ProcessFhirMetadataRequest(ICallback callback, ModelBaseInputs<TSP> requestDetails)
         {
-            System.Threading.Tasks.Task.Run(() => _facade.GetConformance(requestDetails, Rest.SummaryType.False).ContinueWith<CapabilityStatement>(r =>
+            System.Threading.Tasks.Task.Run(async () =>
             {
-                if (r.Exception != null)
+                // As per the documentation http://hl7.org/fhir/smart-app-launch/conformance/index.html
+                CapabilityStatement cs;
+                try
                 {
-                    SetErrorResponse(callback, r.Exception);
-                    return null;
+                    cs = await _facade.GetConformance(requestDetails, Rest.SummaryType.False);
+                }
+                catch (Exception ex)
+                {
+                    SetErrorResponse(callback, ex);
+                    return;
                 }
                 base.StatusCode = (int)HttpStatusCode.OK;
-
-                // As per the documentation http://hl7.org/fhir/smart-app-launch/conformance/index.html
-                CapabilityStatement cs = r.Result;
 
                 // Update the security node with our internal security node
                 if (cs.Rest[0].Security == null)
@@ -344,13 +634,13 @@ namespace Hl7.Fhir.SmartAppLaunch
                 extension.AddExtension("token", new FhirUri($"https://{_identityServerBaseUrl}/token"));
                 extension.AddExtension("authorize", new FhirUri($"https://{_identityServerBaseUrl}/authorize"));
 
-                base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(r.Result));
+                base.Stream = new MemoryStream(new Hl7.Fhir.Serialization.FhirJsonSerializer(new Hl7.Fhir.Serialization.SerializerSettings() { Pretty = true }).SerializeToBytes(cs));
                 Console.WriteLine($"Success: {base.Stream.Length}");
                 base.MimeType = "application/fhir+json";
+
                 if (!callback.IsDisposed)
                     callback.Continue();
-                return r.Result;
-            }));
+            });
             return CefReturnValue.ContinueAsync;
         }
 
