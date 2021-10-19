@@ -156,9 +156,11 @@ namespace Test.Fhir.SmartAppLaunch.Support
 
             string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
             System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
-            DebugDumpOutputJson(new FhirJsonParser().Parse(resultContent));
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
             Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
             Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(CapabilityStatement));
         }
 
         [TestMethod]
@@ -173,9 +175,12 @@ namespace Test.Fhir.SmartAppLaunch.Support
 
             string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
             System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
-            DebugDumpOutputJson(new FhirJsonParser().Parse(resultContent));
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
             Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
             Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Patient));
         }
 
         [TestMethod]
@@ -190,9 +195,12 @@ namespace Test.Fhir.SmartAppLaunch.Support
 
             string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
             System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
-            DebugDumpOutputJson(new FhirJsonParser().Parse(resultContent));
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
             Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
             Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Bundle));
         }
 
         [TestMethod]
@@ -207,9 +215,12 @@ namespace Test.Fhir.SmartAppLaunch.Support
 
             string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
             System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
-            DebugDumpOutputJson(new FhirJsonParser().Parse(resultContent));
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
             Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
             Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Bundle));
         }
 
         [TestMethod]
@@ -236,9 +247,12 @@ namespace Test.Fhir.SmartAppLaunch.Support
 
             string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
             System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
-            DebugDumpOutputJson(new FhirJsonParser().Parse(resultContent));
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
             Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
             Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Bundle));
         }
 
         [TestMethod]
@@ -255,9 +269,12 @@ namespace Test.Fhir.SmartAppLaunch.Support
 
             string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
             System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
-            DebugDumpOutputJson(new FhirJsonParser().Parse(resultContent));
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
             Assert.AreEqual((int)HttpStatusCode.Unauthorized, response.StatusCode);
             Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(OperationOutcome));
         }
 
         private string PerformGetRequest(string requestPath, string bearer, SmartApplicationDetails appDetails, IFhirSmartAppContext smartAppContext, long sessionIdentifier, out MockResponse response)

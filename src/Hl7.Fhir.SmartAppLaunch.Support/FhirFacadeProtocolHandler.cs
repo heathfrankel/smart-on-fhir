@@ -143,7 +143,7 @@ namespace Hl7.Fhir.SmartAppLaunch
 
                             // GET for a specific resource
                             ResourceIdentity ri = new ResourceIdentity(uri);
-                            if (ri.IsRestResourceIdentity())
+                            if (ri.IsRestResourceIdentity() && !string.IsNullOrEmpty(ri.Id))
                             {
                                 // Check that this is within the smart context
                                 if (_applySmartScopes)
@@ -156,7 +156,9 @@ namespace Hl7.Fhir.SmartAppLaunch
                                     }
                                     if (resourceType == "Patient")
                                     {
-                                        if (requestDetails.User.PatientInContext() != ri.Id)
+                                        if (requestDetails.User.PatientInContext() != ri.Id 
+                                            && !(scopeRead.SmartUserType == SmartUserType.user
+                                            || scopeRead.SmartUserType == SmartUserType.system))
                                         {
                                             SetErrorResponse(callback, HttpStatusCode.Unauthorized, OperationOutcome.IssueSeverity.Error, OperationOutcome.IssueType.Security, $"User {requestDetails.User?.Identity.Name}/App {_app.Name} does not have access to {resourceType}/{ri.Id}");
                                             return CefReturnValue.Continue;
