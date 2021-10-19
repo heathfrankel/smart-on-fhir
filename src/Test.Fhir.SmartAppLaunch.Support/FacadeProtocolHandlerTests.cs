@@ -15,6 +15,7 @@ using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using System.Collections.Generic;
 
 namespace Test.Fhir.SmartAppLaunch.Support
 {
@@ -236,6 +237,28 @@ namespace Test.Fhir.SmartAppLaunch.Support
         }
 
         [TestMethod]
+        public void SearchDocumentReferencePatientFromContext()
+        {
+            string requestPath = "DocumentReference";
+            string bearer = Guid.NewGuid().ToFhirId();
+
+            SmartApplicationDetails appDetails = GetSmartAppDetails();
+            IFhirSmartAppContext smartAppContext = GetSmartAppUserContext(bearer);
+            smartAppContext.Scopes = "patient/Patient.* patient/DocumentReference.* openid profile launch-ehr";
+            (smartAppContext.ContextProperties as List<KeyValuePair<string, string>>).Add(new KeyValuePair<string, string>("patient", "2034921"));
+            (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
+
+            string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Bundle));
+        }
+
+        [TestMethod]
         public void SearchDocumentReferencePermitted()
         {
             string requestPath = "DocumentReference?patient=Patient/2034921";
@@ -246,6 +269,26 @@ namespace Test.Fhir.SmartAppLaunch.Support
             (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
 
             string resultContent = PerformGetRequest(requestPath, bearer, appDetails, smartAppContext, out MockResponse response);
+            System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
+            var resultResource = new FhirJsonParser().Parse(resultContent);
+            DebugDumpOutputJson(resultResource);
+
+            Assert.AreEqual((int)HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("application/fhir+json", response.MimeType);
+            Assert.IsInstanceOfType(resultResource, typeof(Bundle));
+        }
+
+        [TestMethod]
+        public void SearchDocumentReferenceByPost()
+        {
+            string requestPath = "DocumentReference";
+            string bearer = Guid.NewGuid().ToFhirId();
+
+            SmartApplicationDetails appDetails = GetSmartAppDetails();
+            IFhirSmartAppContext smartAppContext = GetSmartAppUserContext(bearer);
+            (smartAppContext as MockFhirSmartAppContext).Principal = smartAppContext.ToPrincipal(appDetails, GetIdToken(appDetails, smartAppContext));
+
+            string resultContent = PerformPostOrPutRequest(requestPath, bearer, appDetails, smartAppContext, "POST", "application/x-www-form-urlencoded", "patient=Patient/2034921", 1, out MockResponse response);
             System.Diagnostics.Trace.WriteLine($"{response.StatusCode}: {response.StatusText}  {response.ErrorCode} mimeType: {response.MimeType}");
             var resultResource = new FhirJsonParser().Parse(resultContent);
             DebugDumpOutputJson(resultResource);
@@ -275,6 +318,49 @@ namespace Test.Fhir.SmartAppLaunch.Support
             Assert.AreEqual((int)HttpStatusCode.Unauthorized, response.StatusCode);
             Assert.AreEqual("application/fhir+json", response.MimeType);
             Assert.IsInstanceOfType(resultResource, typeof(OperationOutcome));
+        }
+
+        private string PerformPostOrPutRequest(string requestPath, string bearer, SmartApplicationDetails appDetails, IFhirSmartAppContext smartAppContext, string method, string contentType, string content, long sessionIdentifier, out MockResponse response)
+        {
+            _mgr.RegisterSession(sessionIdentifier, appDetails, smartAppContext);
+            string baseUrl = "https://example.org";
+            string identityUrl = "https://example.org/identity";
+            FhirFacadeProtocolSchemeHandlerFactory<IServiceProvider> factory = new FhirFacadeProtocolSchemeHandlerFactory<IServiceProvider>(
+                _mgr, baseUrl, identityUrl, () => { return _systemService; }, true);
+
+            var request = new CefSharp.Request()
+            {
+                Method = method,
+                Url = $"{baseUrl}/{requestPath}",
+            };
+            request.SetHeaderByName("Content-Type", contentType, true);
+            request.InitializePostData();
+            var element = request.PostData.CreatePostDataElement();
+            element.Bytes = System.Text.UTF8Encoding.UTF8.GetBytes(content);
+            request.PostData.AddElement(element);
+            if (!string.IsNullOrEmpty(bearer))
+                request.SetHeaderByName("Authorization", $"Bearer {bearer}", true);
+            CefSharp.IFrame frame = new MockFrame(sessionIdentifier);
+            CefSharp.IBrowser browser = new MockBrowser(frame);
+            var t = factory.Create(browser, frame, "https", request);
+            var callback = new MockCallback();
+            bool handleRequest;
+            var result = t.Open(request, out handleRequest, callback);
+            response = new MockResponse();
+            t.GetResponseHeaders(response, out long responseLength, out string redirectURl);
+            if (responseLength == -1)
+            {
+                // need to wait some time
+                int nDelay = 100;
+                while (!callback.IsContinue && !callback.IsCancelled)
+                    System.Threading.Tasks.Task.Delay(nDelay);
+                // call the GetResponse once more to get the final headers?
+                t.GetResponseHeaders(response, out responseLength, out redirectURl);
+            }
+            var responseStream = (t as FhirFacadeProtocolSchemeHandler<IServiceProvider>).Stream;
+            responseStream.Seek(0, SeekOrigin.Begin);
+            StreamReader sr = new StreamReader(responseStream);
+            return sr.ReadToEnd();
         }
 
         private string PerformGetRequest(string requestPath, string bearer, SmartApplicationDetails appDetails, IFhirSmartAppContext smartAppContext, long sessionIdentifier, out MockResponse response)
