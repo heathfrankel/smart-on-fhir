@@ -40,6 +40,7 @@ namespace Hl7.Fhir.SmartAppLaunch
         public string ResourceType { get; private set; }
         public string ResourceId { get; private set; }
         public string Version { get; private set; }
+        public string OperationName { get; private set; }
 
         public FhirRequestType ParseRequestType(string method, string requestUrl, string contentType)
         {
@@ -67,7 +68,10 @@ namespace Hl7.Fhir.SmartAppLaunch
                 if (uri.LocalPath == "/_history")
                     return FhirRequestType.SystemHistory;
                 if (uri.LocalPath.StartsWith("/$"))
+                {
+                    OperationName = uri.LocalPath.Substring(2);
                     return FhirRequestType.SystemOperation;
+                }
             }
 
             if (method == "POST")
@@ -79,7 +83,10 @@ namespace Hl7.Fhir.SmartAppLaunch
                     return FhirRequestType.SystemBatchOperation;
                 }
                 if (uri.LocalPath.StartsWith("/$"))
+                {
+                    OperationName = uri.LocalPath.Substring(2);
                     return FhirRequestType.SystemOperation;
+                }
             }
 
             // ----------------------------------------------------------------------
@@ -105,7 +112,10 @@ namespace Hl7.Fhir.SmartAppLaunch
                 if (resourceSubPath == "/_history")
                     return FhirRequestType.ResourceTypeHistory;
                 if (resourceSubPath.StartsWith("/$"))
+                {
+                    OperationName = resourceSubPath.Substring(2);
                     return FhirRequestType.ResourceTypeOperation;
+                }
             }
 
             if (method == "POST")
@@ -117,7 +127,10 @@ namespace Hl7.Fhir.SmartAppLaunch
                     return FhirRequestType.ResourceTypeCreate;
                 }
                 if (resourceSubPath.StartsWith("/$"))
+                {
+                    OperationName = resourceSubPath.Substring(2);
                     return FhirRequestType.ResourceTypeOperation;
+                }
             }
 
             // ----------------------------------------------------------------------
@@ -138,7 +151,10 @@ namespace Hl7.Fhir.SmartAppLaunch
                 if (resourceIdSubPath == "/_history")
                     return FhirRequestType.ResourceInstanceHistory;
                 if (resourceIdSubPath.StartsWith("/$"))
+                {
+                    OperationName = resourceIdSubPath.Substring(2);
                     return FhirRequestType.ResourceInstanceOperation;
+                }
                 if (resourceIdSubPath.StartsWith("/_history/"))
                 {
                     Version = resourceIdSubPath.Substring("/_history/".Length);
@@ -166,7 +182,10 @@ namespace Hl7.Fhir.SmartAppLaunch
                     return FhirRequestType.ResourceInstanceUpdate;
                 }
                 if (resourceIdSubPath.StartsWith("/$"))
+                {
+                    OperationName = resourceIdSubPath.Substring(2);
                     return FhirRequestType.ResourceInstanceOperation;
+                }
                 return FhirRequestType.Unknown;
             }
 

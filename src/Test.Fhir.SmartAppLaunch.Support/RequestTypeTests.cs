@@ -36,8 +36,8 @@ namespace Test.Fhir.SmartAppLaunch.Support
                     new object[] {FhirRequestTypeParser.FhirRequestType.ResourceTypeSearch,"GET", null, "http://example.org/Patient/", "Patient", null },
                     new object[] {FhirRequestTypeParser.FhirRequestType.ResourceTypeSearch,"POST", "application/x-www-form-urlencoded", "http://example.org/Patient", "Patient", null },
                     new object[] {FhirRequestTypeParser.FhirRequestType.ResourceTypeSearch,"POST", "application/x-www-form-urlencoded", "http://example.org/Patient/", "Patient", null },
-                    new object[] {FhirRequestTypeParser.FhirRequestType.ResourceTypeOperation,"GET", null, "http://example.org/Patient/$sample", "Patient", null },
-                    new object[] {FhirRequestTypeParser.FhirRequestType.ResourceTypeOperation,"POST", "application/fhir+json", "http://example.org/Patient/$sample", "Patient", null },
+                    new object[] {FhirRequestTypeParser.FhirRequestType.ResourceTypeOperation,"GET", null, "http://example.org/Patient/$tsample", "Patient", null },
+                    new object[] {FhirRequestTypeParser.FhirRequestType.ResourceTypeOperation,"POST", "application/fhir+json", "http://example.org/Patient/$tsample", "Patient", null },
                     new object[] {FhirRequestTypeParser.FhirRequestType.ResourceTypeCreate,"POST", "application/fhir+json", "http://example.org/Patient", "Patient", null },
                     new object[] {FhirRequestTypeParser.FhirRequestType.UnknownResourceType,"GET", null, "http://example.org/glarb", "glarb", null }, // intentional incorrect resource type
 
@@ -63,6 +63,13 @@ namespace Test.Fhir.SmartAppLaunch.Support
             Assert.AreEqual(resourceType, parser.ResourceType);
             Assert.AreEqual(resourceId, parser.ResourceId);
             Assert.AreEqual(versionId, parser.Version);
+            if (result == FhirRequestTypeParser.FhirRequestType.ResourceInstanceOperation)
+                Assert.AreEqual("testme", parser.OperationName);
+            if (result == FhirRequestTypeParser.FhirRequestType.ResourceTypeOperation)
+                Assert.AreEqual("tsample", parser.OperationName);
+            if (result == FhirRequestTypeParser.FhirRequestType.SystemOperation)
+                Assert.AreEqual("sample", parser.OperationName);
+            System.Diagnostics.Trace.WriteLine(parser.OperationName);
         }
     }
 }
