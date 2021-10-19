@@ -37,6 +37,10 @@ namespace Hl7.Fhir.SmartAppLaunch
             ResourceInstanceOperation,
         }
 
+        public string ResourceType { get; private set; }
+        public string ResourceId { get; private set; }
+        public string Version { get; private set; }
+
         public FhirRequestType ParseRequestType(string method, string requestUrl, string contentType)
         {
             if (String.IsNullOrEmpty(requestUrl))
@@ -87,6 +91,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                 resourceSubPath = resourceType.Substring(resourceType.IndexOf("/"));
                 resourceType = resourceType.Substring(0, resourceType.IndexOf("/"));
             }
+            ResourceType = resourceType; // yes grab it before verifying, so that can be used in error messages
             if (!ModelInfo.IsKnownResource(resourceType))
             {
                 // unknown resource type
@@ -124,6 +129,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                 resourceIdSubPath = resourceId.Substring(resourceId.IndexOf("/"));
                 resourceId = resourceId.Substring(0, resourceId.IndexOf("/"));
             }
+            ResourceId = resourceId;
 
             if (method == "GET")
             {
@@ -134,7 +140,10 @@ namespace Hl7.Fhir.SmartAppLaunch
                 if (resourceIdSubPath.StartsWith("/$"))
                     return FhirRequestType.ResourceInstanceOperation;
                 if (resourceIdSubPath.StartsWith("/_history/"))
+                {
+                    Version = resourceIdSubPath.Substring("/_history/".Length);
                     return FhirRequestType.ResourceInstanceGetVersion;
+                }
             }
 
             if (method == "PUT")
