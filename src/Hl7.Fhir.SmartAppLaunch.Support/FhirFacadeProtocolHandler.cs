@@ -656,6 +656,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             smart_config.token_endpoint = $"https://{_identityServerBaseUrl}/token";
             smart_config.scopes_supported = _app.AllowedScopes;
             smart_config.response_types_supported = new[] { "code", "code id_token" };
+            smart_config.code_challenge_methods_supported = new[] { "S256" };
             var capabilities = new List<string> { "launch-ehr", "permission-v2", "context-ehr-patient", "authorize-post" };
             if (String.IsNullOrEmpty(_app.ClientSecret))
                 capabilities.Add("client-public");

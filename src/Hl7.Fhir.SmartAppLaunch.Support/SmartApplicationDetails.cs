@@ -62,5 +62,11 @@ namespace Hl7.Fhir.SmartAppLaunch
         /// When creating the id_token, the Issuer that is configured for the smart App
         /// </summary>
         public string Issuer { get; set; }
+
+        /// <summary>
+        /// Indicate that this application must provide the PKCE code_verifier/code_challenge
+        /// https://datatracker.ietf.org/doc/html/rfc7636
+        /// </summary>
+        public bool RequiresPKCE { get; set; }
     }
 }

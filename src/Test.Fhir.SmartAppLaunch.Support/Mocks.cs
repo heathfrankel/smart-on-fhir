@@ -265,6 +265,8 @@ namespace Test.Fhir.SmartAppLaunch.Support
         public string MedicareProviderNumber { get; internal set; }
         public string PractitionerName { get; internal set; }
         public string PractitionerId { get; internal set; }
+        public string CodeChallenge { get; set; }
+        public string CodeChallengeMethod { get; set; }
 
         public string GetIdToken(SmartApplicationDetails appDetails)
         {

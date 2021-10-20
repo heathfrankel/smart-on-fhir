@@ -9,6 +9,8 @@ namespace EHRApp
     {
         public string LaunchContext { get; set; }
         public string Code { get; set; }
+        public string CodeChallenge { get; set; }
+        public string CodeChallengeMethod { get; set; }
         public string Bearer { get; set; }
         public string Scopes { get; set; }
         public DateTimeOffset ExpiresAt { get; set; }

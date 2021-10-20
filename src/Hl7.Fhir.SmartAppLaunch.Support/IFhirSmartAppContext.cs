@@ -37,6 +37,18 @@ namespace Hl7.Fhir.SmartAppLaunch
         string Code { get; set; }
 
         /// <summary>
+        /// PKCE - S256 Hashed code_challenge property as passed in
+        /// http://build.fhir.org/ig/HL7/smart-app-launch/app-launch.html#obtain-authorization-code
+        /// </summary>
+        string CodeChallenge { get; set; }
+
+        /// <summary>
+        /// Code Challenge method - should alwasy be S256
+        /// http://build.fhir.org/ig/HL7/smart-app-launch/app-launch.html#obtain-authorization-code
+        /// </summary>
+        string CodeChallengeMethod { get; set; }
+
+        /// <summary>
         /// The bearer token to use for this session
         /// </summary>
         string Bearer { get; set; }

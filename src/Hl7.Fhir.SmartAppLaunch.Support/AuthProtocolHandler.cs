@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using CefSharp;
 using Hl7.Fhir.Support;
 using Newtonsoft.Json;
@@ -127,6 +128,39 @@ namespace Hl7.Fhir.SmartAppLaunch
             // Check the scopes are supported
             _context.Scopes = FilterScopes(requestedScopes, _app.AllowedScopes);
 
+            // read the PKCE properties
+            _context.CodeChallenge = keyValuePairs.FirstOrDefault(k => k.Key == "code_challenge").Value;
+            _context.CodeChallengeMethod = keyValuePairs.FirstOrDefault(k => k.Key == "code_challenge_method").Value;
+            if (_app.RequiresPKCE)
+            {
+                if (string.IsNullOrEmpty(_context.CodeChallenge) || string.IsNullOrEmpty(_context.CodeChallengeMethod))
+                {
+                    base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
+                    // replace this with some Razor content
+                    base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes("<HTML><body>App requires PKCE code_challenge</body></HTML>"));
+                    base.Headers.Add("Cache-Control", "no-store");
+                    base.Headers.Add("Pragma", "no-cache");
+                    base.MimeType = "text/html;charset=UTF-8";
+
+                    if (!callback.IsDisposed)
+                        callback.Continue();
+                    return CefReturnValue.Continue;
+                }
+                if (_context.CodeChallengeMethod != "S256")
+                {
+                    base.StatusCode = (int)System.Net.HttpStatusCode.BadRequest;
+                    // replace this with some Razor content
+                    base.Stream = new System.IO.MemoryStream(System.Text.UTF8Encoding.UTF8.GetBytes("<HTML><body>App requires PKCE code_challenge_method = 'S256'</body></HTML>"));
+                    base.Headers.Add("Cache-Control", "no-store");
+                    base.Headers.Add("Pragma", "no-cache");
+                    base.MimeType = "text/html;charset=UTF-8";
+
+                    if (!callback.IsDisposed)
+                        callback.Continue();
+                    return CefReturnValue.Continue;
+                }
+            }
+
             // TODO: (and possibly the referrer value against the _apps.AllowedHosts)
 
             // This client (application) is authorized to connect to the system, and we have a logged in user in the system (as you've come in from our browser)
@@ -184,6 +218,33 @@ namespace Hl7.Fhir.SmartAppLaunch
             {
                 SetErrorResponse(callback, System.Net.HttpStatusCode.BadRequest, "Invalid redirect_uri provided");
                 return CefReturnValue.Continue;
+            }
+
+            // PKCE code_verifier
+            string code_verifier = keyValuePairs.FirstOrDefault(k => k.Key == "code_verifier").Value;
+            if (!string.IsNullOrEmpty(_context.CodeChallenge))
+            {
+                if (_context.CodeChallengeMethod == "S256")
+                {
+                    using (var hasher = SHA256.Create())
+                    {
+                        var computedChallenge = Convert.ToBase64String(hasher.ComputeHash(System.Text.ASCIIEncoding.ASCII.GetBytes(code_verifier))).Replace("+", "-").Replace("/", "_").Replace("=", "");
+                        if (computedChallenge != _context.CodeChallenge)
+                        {
+                            SetErrorResponse(callback, System.Net.HttpStatusCode.BadRequest, "Invalid code_verifier provided");
+                            return CefReturnValue.Continue;
+                        }
+                    }
+                }
+                // FHIR SMART app launch only support the S256 anyway
+                //else if (_context.CodeChallengeMethod == "plain")
+                //{
+                //    if (code_verifier != _context.CodeChallenge)
+                //    {
+                //        SetErrorResponse(callback, System.Net.HttpStatusCode.BadRequest, "Invalid code_verifier provided");
+                //        return CefReturnValue.Continue;
+                //    }
+                //}
             }
 
             // Grab the id_token if it's required
