@@ -135,6 +135,7 @@ namespace Hl7.Fhir.SmartAppLaunch
                 var summary = GetSummaryParameter(uri);
                 var parameters = TupledParameters(uri, SearchQueryParameterNames).ToList(); // convert to a list so that we can append the patient ID when required
                 int? pagesize = GetIntParameter(uri, FhirParameter.COUNT);
+                string sortby = GetParameter(uri, FhirParameter.SORT);
                 Resource postedResource = null;
                 if (request.PostData != null)
                 {
@@ -169,6 +170,10 @@ namespace Hl7.Fhir.SmartAppLaunch
                                             case "data": summary = SummaryType.Data; break;
                                             case "count": summary = SummaryType.Count; break;
                                         }
+                                    }
+                                    else if (key == FhirParameter.SORT)
+                                    {
+                                        sortby = val;
                                     }
                                     else
                                     {
@@ -223,7 +228,7 @@ namespace Hl7.Fhir.SmartAppLaunch
 
                     // ----------------------------------------------------------------------------------------------
                     case FhirRequestTypeParser.FhirRequestType.ResourceTypeSearch:
-                        return ProcessSearchRequest(callback, requestDetails, rs, summary, parameters, pagesize, rtParser.ResourceType);
+                        return ProcessSearchRequest(callback, requestDetails, rs, summary, parameters, pagesize, rtParser.ResourceType, sortby);
 
                     case FhirRequestTypeParser.FhirRequestType.ResourceTypeOperation:
                         return ProcessResourceTypeOperation(callback, requestDetails, rs, postedResource, rtParser.ResourceType, rtParser.OperationName, summary);
@@ -402,7 +407,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             return CefReturnValue.ContinueAsync;
         }
 
-        private CefReturnValue ProcessSearchRequest(ICallback callback, ModelBaseInputs<TSP> requestDetails, IFhirResourceServiceR4<TSP> rs, SummaryType summary, List<KeyValuePair<string, string>> parameters, int? pagesize, string resourceType)
+        private CefReturnValue ProcessSearchRequest(ICallback callback, ModelBaseInputs<TSP> requestDetails, IFhirResourceServiceR4<TSP> rs, SummaryType summary, List<KeyValuePair<string, string>> parameters, int? pagesize, string resourceType, string sortby)
         {
             if (_applySmartScopes)
             {
@@ -435,7 +440,7 @@ namespace Hl7.Fhir.SmartAppLaunch
             {
                 try
                 {
-                    var result = await rs.Search(parameters, pagesize, summary);
+                    var result = await rs.Search(parameters, pagesize, summary, sortby);
                     var statusCode = result.HasAnnotation<HttpStatusCode>() ? result.Annotation<HttpStatusCode>() : HttpStatusCode.OK;
                     SetResponse(callback, statusCode, result);
                 }
