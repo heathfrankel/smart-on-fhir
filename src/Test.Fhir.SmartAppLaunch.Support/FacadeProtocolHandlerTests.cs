@@ -16,6 +16,8 @@ using System.Security.Cryptography.X509Certificates;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Test.Fhir.SmartAppLaunch.Support
 {
@@ -101,9 +103,13 @@ namespace Test.Fhir.SmartAppLaunch.Support
 
         public static X509Certificate2 GetNashCertificate()
         {
-            // This could be replaced with reading from the Certificate Store, or some other mechanism
-            // TODO: retrieve your NASH certificate
-            return null;
+            // Since we are unit testing, we can just create our own self signed cert for nothing!
+            // Normal use expect this to be a real certificate (hopefully a NASH cert)
+            // https://stackoverflow.com/questions/13806299/how-can-i-create-a-self-signed-certificate-using-c
+            var rsaCrypto = new System.Security.Cryptography.RSACryptoServiceProvider(2048);
+            var req = new CertificateRequest("cn=foobar", rsaCrypto, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            var cert = req.CreateSelfSigned(DateTimeOffset.Now, DateTimeOffset.Now.AddMonths(3));
+            return cert;
         }
 
         public static string[] GetNashPublicKeyChain(X509Certificate2 cert)

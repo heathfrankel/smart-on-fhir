@@ -32,15 +32,16 @@ namespace EHRApp
                 toolbarItem.Tag = settings.Key;
                 toolbarItem.Text = settings.Name;
                 toolbarItem.Click += new System.EventHandler(smartAppLaunchToolbarItem_Click);
-                
+
                 toolsMenu.DropDownItems.Add(toolbarItem);
             }
-            DisplayOutput($"Demo FHIR Server at {Program._baseAddress}");
+            if (!string.IsNullOrEmpty(Globals.ApplicationSettings.LocalFileSystemFolder))
+                DisplayOutput($"Demo FHIR Server at {Program._baseAddress}");
         }
 
         private void ShowNewForm(object sender, EventArgs e)
         {
-            
+
         }
 
         private void ExitToolsStripMenuItem_Click(object sender, EventArgs e)
@@ -97,16 +98,16 @@ namespace EHRApp
                 childForm.Close();
             }
         }
-        
+
         public void DisplayOutput(string output)
         {
             this.InvokeOnUiThreadIfRequired(() => toolStripStatusLabel.Text = output);
         }
-        
+
         private void OpenPatient(object sender, EventArgs e)
         {
             OpenPatientForm openPatientForm = new OpenPatientForm();
-            if(openPatientForm.ShowDialog(this) == DialogResult.OK)
+            if (openPatientForm.ShowDialog(this) == DialogResult.OK)
             {
                 Patient patient = openPatientForm.OpenPatient();
                 if (patient != null)
@@ -118,7 +119,7 @@ namespace EHRApp
                     patientForm.Show();
                 }
                 //else
-                    // TODO: Give user an error message
+                // TODO: Give user an error message
             }
         }
 

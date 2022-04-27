@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net462</TargetFramework>
+    <TargetFramework>net472</TargetFramework>
 
     <IsPackable>false</IsPackable>
     <CefSharpAnyCpuSupport>true</CefSharpAnyCpuSupport>
@@ -18,10 +18,6 @@
   <PropertyGroup Condition="'$(PlatformTarget)' == 'x64'">
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win7-x64</RuntimeIdentifier>
   </PropertyGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="..\ehr-app\fac_sign.p12" Link="fac_sign.p12" />
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="brianpos.Fhir.R4.DemoFileSystemFhirServer" Version="3.7.0-beta1" />

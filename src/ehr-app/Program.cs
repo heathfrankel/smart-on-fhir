@@ -22,12 +22,14 @@ namespace EHRApp
             InitializeConfiguration();
             InitializeCef();
 
-            StartupWebServer();
+            if (!string.IsNullOrEmpty(Globals.ApplicationSettings.LocalFileSystemFolder))
+                StartupWebServer();
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MDIParent());
-            _fhirServerController.Dispose();
+            if (_fhirServerController != null)
+                _fhirServerController.Dispose();
         }
 
         static void StartupWebServer()
@@ -85,12 +87,17 @@ namespace EHRApp
             string identityServerAddress = "identity.test.localhost";
 
             Cef.GetGlobalRequestContext().RegisterSchemeHandlerFactory("https", identityServerAddress, new AuthProtocolSchemeHandlerFactory(ActiveSession));
-            Cef.GetGlobalRequestContext().RegisterSchemeHandlerFactory("https", fhirServerAddress, new FhirFacadeProtocolSchemeHandlerFactory<IDependencyScope>(ActiveSession, fhirServerAddress, identityServerAddress, () =>
+            if (!string.IsNullOrEmpty(Globals.ApplicationSettings.LocalFileSystemFolder))
             {
-                // return new ComCare.FhirServer.Models.ComCareSystemService(Configuration());
-                return Startup.systemService;
-            }, true));
-            // Cef.GetGlobalRequestContext().RegisterSchemeHandlerFactory("https", fhirServerAddress, new FhirProxyProtocolSchemeHandlerFactory(ActiveSession, fhirServerAddress, identityServerAddress, Globals.ApplicationSettings.FhirBaseUrl));
+                Cef.GetGlobalRequestContext().RegisterSchemeHandlerFactory("https", fhirServerAddress, new FhirFacadeProtocolSchemeHandlerFactory<IDependencyScope>(ActiveSession, fhirServerAddress, identityServerAddress, () =>
+                {
+                    return Startup.systemService;
+                }, true));
+            }
+            else
+            {
+                Cef.GetGlobalRequestContext().RegisterSchemeHandlerFactory("https", fhirServerAddress, new FhirProxyProtocolSchemeHandlerFactory(ActiveSession, fhirServerAddress, identityServerAddress, Globals.ApplicationSettings.FhirBaseUrl));
+            }
         }
 
         public static IConfigurationRoot Configuration()

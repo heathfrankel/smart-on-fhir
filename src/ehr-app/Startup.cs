@@ -22,14 +22,17 @@ namespace EHRApp
             // Configure Web API for self-host.
             HttpConfiguration config = new HttpConfiguration();
 
-            systemService = new DirectorySystemService<IDependencyScope>();
-            DirectorySystemService<IDependencyScope>.Directory = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)+"\\.fhir\\ehrapp-testdata";
-            if (!System.IO.Directory.Exists(DirectorySystemService<IDependencyScope>.Directory))
-                System.IO.Directory.CreateDirectory(DirectorySystemService<IDependencyScope>.Directory);
-            (systemService as DirectorySystemService<IDependencyScope>).InitializeIndexes();
-            // systemService = new ComCare.FhirServer.Models.ComCareSystemService(Program.Configuration()); // this is from the actual WebAPI Project
+            if (!string.IsNullOrEmpty(Globals.ApplicationSettings.LocalFileSystemFolder))
+            {
+                systemService = new DirectorySystemService<IDependencyScope>();
 
-            WebApiConfig.Register(config, systemService);
+                DirectorySystemService<IDependencyScope>.Directory = Globals.ApplicationSettings.LocalFileSystemFolder;
+                if (!System.IO.Directory.Exists(DirectorySystemService<IDependencyScope>.Directory))
+                    System.IO.Directory.CreateDirectory(DirectorySystemService<IDependencyScope>.Directory);
+                (systemService as DirectorySystemService<IDependencyScope>).InitializeIndexes();
+
+                WebApiConfig.Register(config, systemService);
+            }
 
             config.Formatters.Add(new SimpleHtmlFhirOutputFormatter());
             appBuilder.UseWebApi(config);

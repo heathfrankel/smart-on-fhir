@@ -7,6 +7,7 @@ using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Windows.Forms;
@@ -96,8 +97,29 @@ namespace EHRApp
         public static X509Certificate2 GetNashCertificate()
         {
             // This could be replaced with reading from the Certificate Store, or some other mechanism
-            // TODO: retrieve your NASH certificate
-            return null;
+            if (!string.IsNullOrEmpty(Globals.ApplicationSettings.OrganizationsDigitalCertificateThumbprint))
+            {
+                using (X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser))
+                {
+                    store.Open(OpenFlags.ReadOnly);
+
+                    // no really shouldn't be permitting the invalid certs to be read, but my test NASH one has expired :(
+                    var validOnly = false;
+                    var certs = store.Certificates.Find(X509FindType.FindByThumbprint, Globals.ApplicationSettings.OrganizationsDigitalCertificateThumbprint, validOnly);
+                    store.Close();
+                    if (certs?.Count > 0)
+                    {
+                        return certs[0];
+                    }
+                }
+            }
+
+            // No thumpbrint was provided, so just create a Fake certificate to test with
+            // (no other systems should accept this as a good Organization cert, even though it's valid)
+            var rsaCrypto = new System.Security.Cryptography.RSACryptoServiceProvider(2048);
+            var req = new CertificateRequest("cn=foobar", rsaCrypto, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            var cert = req.CreateSelfSigned(DateTimeOffset.Now, DateTimeOffset.Now.AddMonths(3));
+            return cert;
         }
 
         public static string[] GetNashPublicKeyChain(X509Certificate2 cert)
