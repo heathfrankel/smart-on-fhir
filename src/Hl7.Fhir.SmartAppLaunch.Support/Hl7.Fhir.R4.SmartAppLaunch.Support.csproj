@@ -33,7 +33,11 @@
 
   <ItemGroup>
     <PackageReference Include="brianpos.Fhir.R4.WebApi.Support" Version="3.8.3" />
-    <PackageReference Include="CefSharp.Common" Version="91.1.211" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.11.1" />
+    <PackageReference Include="CefSharp.Common" Version="107.1.90" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.25.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="1.1.1" />
   </ItemGroup>
 </Project>
